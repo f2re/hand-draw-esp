@@ -1,0 +1,73 @@
+name: Bootstrap complete HandDraw ESP project
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/bootstrap-project.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-hand-draw-esp
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download project archive from Git object
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE_BLOB_SHA: cbab9576967474a930b0f69dd2d197968e165168
+          ARCHIVE_SHA256: d5e10db3f81bccf9cf3a3c4eb7ba0a908593dadab55545c57c6e965b25260721
+        run: |
+          set -euo pipefail
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/${ARCHIVE_BLOB_SHA}"
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_url}" \
+            | jq -r '.content' \
+            | tr -d '\n' \
+            | base64 --decode > /tmp/hand-draw-esp.tar.gz
+          echo "${ARCHIVE_SHA256}  /tmp/hand-draw-esp.tar.gz" | sha256sum --check --strict
+
+      - name: Replace README-only tree with complete project
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/hand-draw-project
+          mkdir -p /tmp/hand-draw-project
+          tar -xzf /tmp/hand-draw-esp.tar.gz -C /tmp/hand-draw-project
+          test -f /tmp/hand-draw-project/hand-draw-esp/README.md
+          test -f /tmp/hand-draw-project/hand-draw-esp/firmware/fluidnc/config.yaml
+          test -f /tmp/hand-draw-project/hand-draw-esp/hardware/bom.csv
+          rsync -a --delete --exclude='.git/' /tmp/hand-draw-project/hand-draw-esp/ ./
+
+      - name: Validate repository
+        run: |
+          set -euo pipefail
+          npm test
+          python3 scripts/build_webui.py
+          python3 scripts/prepare_controller_bundle.py --output /tmp/handdraw-controller.zip
+          test -s /tmp/handdraw-controller.zip
+
+      - name: Commit complete project to main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Repository already contains the complete project."
+            exit 0
+          fi
+          git commit -m "feat: publish complete HandDraw ESP project"
+          git push origin HEAD:main
