@@ -1,0 +1,27 @@
+{
+  "name": "hand-draw-esp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Автономный веб-интерфейс и открытая конструкция A4-плоттера на ESP32/FluidNC",
+  "scripts": {
+    "setup": "python3 scripts/setup_project.py",
+    "build": "python3 scripts/materialize_sources.py && python3 scripts/build_webui.py",
+    "release": "python3 scripts/prepare_controller_bundle.py",
+    "check:build": "python3 scripts/build_webui.py --check",
+    "test:core": "python3 scripts/materialize_sources.py && node --test tests/core.test.mjs",
+    "test:repo": "python3 scripts/materialize_sources.py && python3 scripts/validate_repository.py",
+    "test": "npm run test:core && npm run build && npm run test:repo && npm run check:build",
+    "check": "npm test",
+    "serve": "python3 scripts/serve_webui.py",
+    "test:browser": "python3 tests/browser_smoke.py",
+    "firmware:prepare": "python3 scripts/install_fluidnc.py",
+    "firmware:flash": "python3 scripts/install_fluidnc.py --flash",
+    "materialize": "python3 scripts/materialize_sources.py"
+  },
+  "engines": {
+    "node": ">=20",
+    "python": ">=3.10"
+  },
+  "license": "GPL-3.0-or-later"
+}

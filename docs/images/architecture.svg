@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="t d">
+  <title id="t">Архитектура HandDraw ESP</title><desc id="d">Поток от текста и изображения через браузерный интерфейс к FluidNC, двигателям и обратному отображению процесса.</desc>
+  <defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-opacity=".12"/></filter><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9z" fill="#3573a8"/></marker><style>.bg{fill:#f6f3ed}.card{fill:#fff;stroke:#cbd8df;stroke-width:2;filter:url(#s)}.h{font:700 24px system-ui,sans-serif;fill:#16395f}.p{font:16px system-ui,sans-serif;fill:#3e5365}.small{font:14px system-ui,sans-serif;fill:#5c7180}.arrow{stroke:#3573a8;stroke-width:3;fill:none;marker-end:url(#a)}.back{stroke:#1d9a79;stroke-width:3;fill:none;marker-end:url(#a);stroke-dasharray:9 7}.chip{fill:#e7f2f6;stroke:#9fc2d2}.accent{fill:#16395f}.white{fill:#fff;font:700 15px system-ui,sans-serif}</style></defs>
+  <rect class="bg" width="1200" height="560" rx="28"/>
+  <text class="h" x="52" y="60">Архитектура: обработка в браузере, движение в FluidNC</text>
+  <rect class="card" x="50" y="120" width="220" height="260" rx="20"/><text class="h" x="78" y="162">Источники</text>
+  <g class="chip"><rect x="78" y="190" width="164" height="38" rx="10"/><rect x="78" y="240" width="164" height="38" rx="10"/><rect x="78" y="290" width="164" height="38" rx="10"/></g>
+  <text class="p" x="100" y="216">Текст и шрифт</text><text class="p" x="100" y="266">SVG / чертёж</text><text class="p" x="100" y="316">PNG / фотография</text>
+  <text class="small" x="78" y="354">Файлы не уходят в облако</text>
+  <rect class="card" x="340" y="95" width="290" height="330" rx="20"/><text class="h" x="370" y="138">WebUI на ESP32</text>
+  <text class="p" x="370" y="180">• однолинейный текст</text><text class="p" x="370" y="212">• разбор SVG и кривых</text><text class="p" x="370" y="244">• контуры и штриховка</text><text class="p" x="370" y="276">• поля, масштаб, наклон</text><text class="p" x="370" y="308">• порядок траекторий</text><text class="p" x="370" y="340">• точный предпросмотр</text><text class="p" x="370" y="372">• генерация G-code</text>
+  <rect class="accent" x="370" y="390" width="228" height="28" rx="8"/><text class="white" x="392" y="410">141 КБ HTML · 36 КБ gzip</text>
+  <rect class="card" x="700" y="95" width="210" height="330" rx="20"/><text class="h" x="730" y="138">FluidNC</text>
+  <text class="p" x="730" y="180">ESP32 / MKS DLC32</text><text class="p" x="730" y="220">Планировщик движения</text><text class="p" x="730" y="252">Homing и soft limits</text><text class="p" x="730" y="284">RC-servo как ось Z</text><text class="p" x="730" y="316">WebSocket статуса</text><text class="p" x="730" y="348">/files → /sd/jobs</text><text class="p" x="730" y="380">$SD/Run=/jobs/…</text>
+  <rect class="card" x="980" y="120" width="170" height="260" rx="20"/><text class="h" x="1006" y="162">Плоттер</text><text class="p" x="1006" y="207">NEMA17 X</text><text class="p" x="1006" y="239">NEMA17 Y</text><text class="p" x="1006" y="271">MG90S</text><text class="p" x="1006" y="303">Концевики</text><text class="p" x="1006" y="335">Лист A4</text>
+  <path class="arrow" d="M270 250H330"/><path class="arrow" d="M630 250H690"/><path class="arrow" d="M910 250H970"/>
+  <path class="back" d="M1065 400V490H485V435"/><text class="p" x="665" y="521">координаты, состояние, процент SD, пауза и ошибки</text>
+</svg>

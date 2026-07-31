@@ -1,0 +1,16 @@
+; A4 reference rectangle, 210 x 297 mm
+; Requires at least X=225 and Y=315 mm travel.
+G21
+G90
+G0 Z5
+G0 X7.5 Y9 F3000
+G0 Z0
+G4 P0.15
+G1 X217.5 Y9 F1500
+G1 X217.5 Y306
+G1 X7.5 Y306
+G1 X7.5 Y9
+G0 Z5
+G4 P0.15
+G0 X0 Y0 F3000
+M2

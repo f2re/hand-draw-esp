@@ -1,0 +1,14 @@
+{
+  "archive": "packed/hand-draw-esp-complete.tar.gz",
+  "archive_sha256": "d5e10db3f81bccf9cf3a3c4eb7ba0a908593dadab55545c57c6e965b25260721",
+  "files": {
+    "web/src/app.js": {"member": "hand-draw-esp/web/src/app.js", "sha256": "ca7d5a30d3ccea18e0b45bce6e2b18e3b249ee8f7f2736570a6ef9b1c71832c3"},
+    "web/src/core.js": {"member": "hand-draw-esp/web/src/core.js", "sha256": "b6561d24e5a75e9306fb570c6c6d7663cbaca55eebefe2395f5efd026970f6e3"},
+    "web/src/fluidnc.js": {"member": "hand-draw-esp/web/src/fluidnc.js", "sha256": "b6ae5eadc588a254ab64b7afcd5d9c36d04fb74083efc1144f98c7cb7bc75a9f"},
+    "web/src/styles.css": {"member": "hand-draw-esp/web/src/styles.css", "sha256": "60dbfc782603fb0c5649ec82e33720feb29e0e0feceb5689d080f92254deaa21"},
+    "web/src/index.html": {"member": "hand-draw-esp/web/src/index.html", "sha256": "1268f1883a8e85bec5fb81e7739af8f5be8d25ac101bff48430f8d851dbc1d2e"},
+    "web/src/fonts/technical-cyrillic.json": {"member": "hand-draw-esp/web/src/fonts/technical-cyrillic.json", "sha256": "b1286d073908b6d405afa672eb8baa7906086595582f92d476b64a19dac6c42a"},
+    "hardware/bom.csv": {"member": "hand-draw-esp/hardware/bom.csv", "sha256": "baa3748ff93bd5e38cef821ef8c289c3fac6c14476b7fffda4059b8ecef3ad4a"},
+    "hardware/bom.json": {"member": "hand-draw-esp/hardware/bom.json", "sha256": "0365d0a6c765790a983097a2f47eb47c5161e525f8302292f267250ec7296fbe"}
+  }
+}

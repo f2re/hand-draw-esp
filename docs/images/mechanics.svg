@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720" role="img" aria-labelledby="t d">
+<title id="t">Механическая схема плоттера A4</title><desc id="d">Вид сверху: основание, рельс Y, балка X, двигатели, ремни и держатель пера.</desc>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse"><path d="M8 0 0 4 8 8z" fill="#2770a8"/></marker><style>.bg{fill:#f6f3ed}.base{fill:#d8b888;stroke:#8a6c45;stroke-width:3}.rail{fill:#3e4d59}.track{stroke:#9fb1bd;stroke-width:10}.belt{stroke:#171c20;stroke-width:4;stroke-dasharray:5 3}.paper{fill:#fff;stroke:#b9c5cd;stroke-width:2}.work{fill:none;stroke:#3183b9;stroke-width:2;stroke-dasharray:8 5}.motor{fill:#424b52;stroke:#15191c;stroke-width:2}.servo{fill:#28659a}.pen{fill:#222}.dim{stroke:#2770a8;stroke-width:2;marker-start:url(#a);marker-end:url(#a)}.lead{stroke:#2770a8;stroke-width:2;fill:none}.h{font:700 28px system-ui,sans-serif;fill:#16395f}.p{font:17px system-ui,sans-serif;fill:#263c4c}.d{font:700 16px system-ui,sans-serif;fill:#2770a8}.n{fill:#2770a8}.nt{font:700 14px system-ui,sans-serif;fill:white;text-anchor:middle;dominant-baseline:middle}</style></defs>
+<rect class="bg" width="1100" height="720" rx="28"/><text class="h" x="55" y="55">Механика A4: одна рельса Y и поддерживаемая балка X</text>
+<rect class="base" x="155" y="110" width="720" height="520" rx="14"/>
+<rect class="paper" x="410" y="235" width="297" height="210" rx="2"/><rect class="work" x="420" y="245" width="277" height="190"/><text class="p" x="532" y="347">лист A4</text>
+<rect class="rail" x="205" y="150" width="42" height="430" rx="8"/><line class="track" x1="226" y1="170" x2="226" y2="558"/><line class="belt" x1="194" y1="170" x2="194" y2="558"/>
+<rect class="motor" x="175" y="528" width="76" height="76" rx="8"/><circle cx="213" cy="566" r="13" fill="#b8c3ca"/>
+<g transform="translate(220 207)"><rect class="rail" x="0" y="0" width="560" height="42" rx="8"/><line class="track" x1="22" y1="21" x2="538" y2="21"/><line class="belt" x1="20" y1="8" x2="540" y2="8"/><rect class="motor" x="-20" y="-18" width="76" height="76" rx="8"/><circle cx="18" cy="20" r="13" fill="#b8c3ca"/><circle cx="526" cy="8" r="15" fill="#9daab3"/><rect class="servo" x="265" y="-8" width="48" height="38" rx="6"/><rect x="269" y="26" width="40" height="55" rx="8" fill="#222"/><line class="pen" x1="289" y1="67" x2="289" y2="113" stroke-width="7"/><circle cx="289" cy="113" r="4" fill="#111"/></g>
+<circle cx="790" cy="230" r="16" fill="#9daab3"/><circle cx="790" cy="230" r="6" fill="#31393f"/>
+<rect x="755" y="250" width="66" height="26" rx="8" fill="#2f596f"/><text class="d" x="910" y="179">опорный ролик</text><path class="lead" d="M900 185 820 225"/>
+<text class="p" x="42" y="188">MGN12H 450 мм</text><path class="lead" d="M135 193 205 193"/><text class="p" x="49" y="570">NEMA17 Y</text><path class="lead" d="M135 565 175 565"/>
+<text class="p" x="468" y="166">профиль 2020 + MGN12H 300 мм</text><path class="lead" d="M597 174 597 207"/>
+<text class="p" x="857" y="281">MG90S и пружинный</text><text class="p" x="857" y="305">держатель ручки</text><path class="lead" d="M847 287 533 252"/>
+<line class="dim" x1="155" y1="670" x2="875" y2="670"/><text class="d" x="466" y="697">основание 500 мм</text>
+<line class="dim" x1="105" y1="110" x2="105" y2="630"/><text class="d" transform="translate(76 430) rotate(-90)">основание 420 мм</text>
+<line class="dim" x1="410" y1="475" x2="707" y2="475"/><text class="d" x="500" y="501">A4: 297 мм</text>
+<line class="dim" x1="735" y1="235" x2="735" y2="445"/><text class="d" transform="translate(761 390) rotate(-90)">210 мм</text>
+<g><circle class="n" cx="226" cy="130" r="14"/><text class="nt" x="226" y="130">1</text><circle class="n" cx="195" cy="618" r="14"/><text class="nt" x="195" y="618">2</text><circle class="n" cx="512" cy="207" r="14"/><text class="nt" x="512" y="207">3</text><circle class="n" cx="510" cy="285" r="14"/><text class="nt" x="510" y="285">4</text></g>
+</svg>
