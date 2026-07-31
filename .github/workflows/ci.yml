@@ -63,3 +63,19 @@ jobs:
           name: handdraw-cad-openscad
           path: build/cad-validation-openscad.json
           if-no-files-found: error
+
+  source-archive-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Зафиксировать размер и контрольную сумму повреждённого архива
+        run: |
+          ls -l packed/hand-draw-esp-complete.tar.gz
+          sha256sum packed/hand-draw-esp-complete.tar.gz
+      - name: Сохранить архив для восстановления исходников
+        uses: actions/upload-artifact@v4
+        with:
+          name: handdraw-packed-source-diagnostic
+          path: packed/hand-draw-esp-complete.tar.gz
+          if-no-files-found: error
+          compression-level: 0
