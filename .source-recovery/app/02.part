@@ -1,0 +1,172 @@
+      ? 'Макет повёрнут и находится в пределах портретно установленного листа.'
+      : 'Макет находится в пределах листа.';
+  } else {
+    element.classList.add('invalid');
+    element.textContent = validation.issues[0] || 'Макет содержит ошибку.';
+  }
+}
+
+async function textPaths() {
+  const logicalPage = landscapeRequested() ? PAGE_PRESETS.A4_LANDSCAPE : PAGE_PRESETS.A4_PORTRAIT;
+  const margins = selectedMargins();
+  const result = layoutText($('#textInput').value, currentFont(), {
+    fontSize: numberValue('#fontSize', 8),
+    widthScale: numberValue('#widthScale', 1),
+    letterSpacing: numberValue('#letterSpacing', 0.5),
+    wordSpacing: numberValue('#wordSpacing', 3),
+    lineHeight: numberValue('#lineHeight', 1.35),
+    lowercaseScale: numberValue('#lowercaseScale', 70) / 100,
+    slant: numberValue('#slant', 0),
+    seed: numberValue('#seed', 17),
+    originX: margins.marginLeft,
+    originY: margins.marginTop,
+    maxWidth: logicalPage.width - margins.marginLeft - margins.marginRight,
+  });
+  if (result.unsupported.length) setMessage('#validationMessage', `Не поддержаны знаки: ${result.unsupported.join(' ')}`);
+  return landscapeRequested() ? rotateLandscapeToPortrait(result.paths) : result.paths;
+}
+
+async function svgPaths() {
+  if (!state.svgText) throw new Error('Сначала выберите SVG-файл.');
+  const result = await svgTextToPaths(state.svgText, {
+    sampleStep: numberValue('#svgSampleStep', 0.4),
+    simplifyTolerance: numberValue('#svgTolerance', 0.08),
+    maximumPoints: 50000,
+  });
+  setMessage('#svgInfo', `Получено ${result.paths.length} штрихов и ${result.pointCount} точек.`);
+  return fitSourcePaths(result.paths);
+}
+
+function imagePaths() {
+  if (!state.imageData) throw new Error('Сначала выберите изображение.');
+  const mode = $('input[name="rasterMode"]:checked')?.value || 'hatch';
+  const logicalPage = landscapeRequested() ? PAGE_PRESETS.A4_LANDSCAPE : PAGE_PRESETS.A4_PORTRAIT;
+  const margins = selectedMargins();
+  const widthMm = Math.max(10, logicalPage.width - margins.marginLeft - margins.marginRight);
+  const heightMm = widthMm * state.imageData.height / state.imageData.width;
+  const common = {
+    widthMm,
+    heightMm,
+    threshold: numberValue('#imageThreshold', 0.5),
+    invert: $('#imageInvert').checked,
+  };
+  const paths = mode === 'contour'
+    ? rasterToContourPaths(state.imageData, { ...common, sampleStepPx: numberValue('#contourStep', 2) })
+    : rasterToHatchPaths(state.imageData, { ...common, rowSpacingMm: numberValue('#hatchSpacing', 1.4) });
+  return fitSourcePaths(paths);
+}
+
+async function generate() {
+  stopSimulation();
+  try {
+    let paths;
+    if (state.source === 'svg') paths = await svgPaths();
+    else if (state.source === 'image') paths = imagePaths();
+    else paths = await textPaths();
+    paths = cleanPaths(paths);
+    if ($('#optimizePaths').checked) paths = optimizePathOrder(paths, { x: 0, y: 0 }, true).paths;
+    state.paths = paths;
+    const result = generateGcode(paths, physicalPage(), {
+      drawFeed: numberValue('#drawFeed', 1200),
+      travelFeed: numberValue('#travelFeed', 4000),
+      penUp: numberValue('#penUp', 5),
+      penDown: numberValue('#penDown', 0),
+      penDwell: numberValue('#penDwell', 0.12),
+      invertY: true,
+    });
+    state.gcode = result.gcode;
+    state.pathByteRanges = result.pathByteRanges;
+    renderPaths();
+    updateValidation(result.validation);
+    state.uploadedJob = null;
+  } catch (error) {
+    state.paths = [];
+    state.gcode = '';
+    renderPaths();
+    updateValidation({ valid: false, issues: [error instanceof Error ? error.message : String(error)] });
+  }
+}
+
+function downloadBlob(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function simulationSegments() {
+  const segments = [];
+  for (let pathIndex = 0; pathIndex < state.paths.length; pathIndex += 1) {
+    const path = state.paths[pathIndex];
+    for (let index = 1; index < path.length; index += 1) {
+      const start = path[index - 1];
+      const end = path[index];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length > 0) segments.push({ start, end, length, pathIndex });
+    }
+  }
+  return segments;
+}
+
+function startSimulation() {
+  stopSimulation();
+  const segments = simulationSegments();
+  if (!segments.length) return;
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  state.simulationDuration = Math.max(1800, Math.min(12000, total * 12));
+  state.simulationStartedAt = performance.now();
+  const cursor = $('#previewCursor');
+  cursor.removeAttribute('hidden');
+  const drawElements = $$('#drawingLayer path');
+  const animate = (now) => {
+    const progress = Math.min(1, (now - state.simulationStartedAt) / state.simulationDuration);
+    let target = progress * total;
+    let active = segments[segments.length - 1];
+    let local = 1;
+    for (const segment of segments) {
+      if (target <= segment.length) {
+        active = segment;
+        local = target / segment.length;
+        break;
+      }
+      target -= segment.length;
+    }
+    const x = active.start.x + (active.end.x - active.start.x) * local;
+    const y = active.start.y + (active.end.y - active.start.y) * local;
+    cursor.setAttribute('cx', x.toFixed(3));
+    cursor.setAttribute('cy', y.toFixed(3));
+    drawElements.forEach((element, index) => {
+      element.classList.toggle('completed', index < active.pathIndex);
+      element.classList.toggle('current', index === active.pathIndex);
+    });
+    $('#jobProgressBar').style.width = `${(progress * 100).toFixed(1)}%`;
+    if (progress < 1) state.simulationFrame = requestAnimationFrame(animate);
+  };
+  state.simulationFrame = requestAnimationFrame(animate);
+}
+
+function stopSimulation() {
+  cancelAnimationFrame(state.simulationFrame);
+  state.simulationFrame = 0;
+  const cursor = $('#previewCursor');
+  if (cursor) {
+    cursor.setAttribute('hidden', '');
+    cursor.setAttribute('cx', '0');
+    cursor.setAttribute('cy', '0');
+  }
+  $$('#drawingLayer path').forEach((element) => element.classList.remove('completed', 'current'));
+  if ($('#jobProgressBar')) $('#jobProgressBar').style.width = '0%';
+}
+
+function activatePanel(name) {
+  $$('.panel-tab').forEach((button) => button.classList.toggle('active', button.dataset.panel === name));
+  $$('[data-panel-content]').forEach((panel) => panel.classList.toggle('active', panel.dataset.panelContent === name));
+  if (name === 'font') requestAnimationFrame(drawGlyphBoard);
+}
+
+function activateSource(name) {
+  state.source = name;
