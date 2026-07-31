@@ -1,4 +1,4 @@
-.PHONY: setup build release firmware test browser validate check serve deploy clean
+.PHONY: setup build release firmware test cad cad-openscad browser validate check serve deploy clean
 
 setup:
 	python3 scripts/setup_project.py
@@ -15,13 +15,19 @@ firmware:
 test:
 	node --test tests/core.test.mjs
 
+cad:
+	python3 scripts/validate_cad.py
+
+cad-openscad:
+	python3 scripts/validate_cad.py --strict --render-all
+
 browser: build
 	python3 tests/browser_smoke.py
 
 validate:
 	python3 scripts/validate_repository.py
 
-check: test build validate
+check: test build cad validate
 
 serve:
 	python3 scripts/serve_webui.py
@@ -30,5 +36,5 @@ deploy:
 	@echo "Использование: python3 scripts/deploy_webui.py <адрес ESP32> [--with-config]"
 
 clean:
-	rm -rf release
+	rm -rf release build
 	rm -f dist/index.html dist/index.html.gz dist/manifest.json dist/browser-smoke.png

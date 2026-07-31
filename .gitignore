@@ -5,22 +5,16 @@ node_modules/
 .DS_Store
 *.log
 
-
 # Local IDE
 .vscode/
 .idea/
-dist/browser-smoke.png
+
+# Generated artifacts
+dist/
 release/
+build/
 .venv/
 .cache/
 
-# Reconstructed from packed/ by scripts/materialize_sources.py
-/web/src/app.js
-/web/src/core.js
-/web/src/fluidnc.js
-/web/src/styles.css
-/web/src/index.html
-/web/src/fonts/technical-cyrillic.json
-/hardware/bom.csv
-/hardware/bom.json
-/dist/
+# Per-machine dimensional worksheet
+hardware/measurements.csv
