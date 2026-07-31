@@ -1,0 +1,62 @@
+name: Применить переработку механики CAD
+
+on:
+  push:
+    branches:
+      - agent/cad-mechanical-rework
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-cad-mechanical-rework
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить ветку
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Подготовить Python и Node.js
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Восстановить проверенный пакет изменений
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .cad-rework/part-* > /tmp/cad-rework-overlay.tar.gz.b64
+          base64 --decode /tmp/cad-rework-overlay.tar.gz.b64 > /tmp/cad-rework-overlay.tar.gz
+          echo '866bc1ed9aa13d6faf6da5449eed30004cd90568793fcb4c65461a78f71ab8a6  /tmp/cad-rework-overlay.tar.gz' | sha256sum --check --strict
+          tar -tzf /tmp/cad-rework-overlay.tar.gz
+          tar -xzf /tmp/cad-rework-overlay.tar.gz -C .
+          rm -rf .cad-rework
+          rm -f .github/workflows/apply-cad-rework.yml
+
+      - name: Проверить программную и CAD-часть
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          python -m py_compile scripts/validate_cad.py
+          python scripts/validate_cad.py --report /tmp/cad-validation.json
+          npm test
+
+      - name: Зафиксировать переработку
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat: rebuild parameterized plotter mechanics'
+          git push origin HEAD:agent/cad-mechanical-rework
