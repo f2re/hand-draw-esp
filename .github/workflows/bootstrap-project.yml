@@ -1,13 +1,12 @@
 name: Bootstrap complete HandDraw ESP project
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/bootstrap-project.yml
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: bootstrap-hand-draw-esp
@@ -15,6 +14,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.event.issue.title == '[bootstrap] publish complete HandDraw ESP project'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current main
@@ -67,7 +67,13 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "Repository already contains the complete project."
-            exit 0
+          else
+            git commit -m "feat: publish complete HandDraw ESP project"
+            git push origin HEAD:main
           fi
-          git commit -m "feat: publish complete HandDraw ESP project"
-          git push origin HEAD:main
+
+      - name: Close bootstrap issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue close "${ISSUE_NUMBER}" --comment "Полный проект опубликован в main; одноразовый bootstrap-workflow удалён итоговым коммитом."
