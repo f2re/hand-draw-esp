@@ -2,7 +2,7 @@ name: Bootstrap complete HandDraw ESP project
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   contents: write
@@ -17,6 +17,12 @@ jobs:
     if: github.event.issue.title == '[bootstrap] publish complete HandDraw ESP project'
     runs-on: ubuntu-latest
     steps:
+      - name: Mark workflow start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "${ISSUE_NUMBER}" --body "Bootstrap workflow started for commit $GITHUB_SHA."
+
       - name: Checkout current main
         uses: actions/checkout@v4
         with:
