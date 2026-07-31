@@ -45,6 +45,42 @@ jobs:
           rm -rf .cad-rework
           rm -f .github/workflows/apply-cad-rework.yml
 
+      - name: Проверить и нормализовать упакованные исходники
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+          import tarfile
+
+          root = Path.cwd()
+          manifest_path = root / 'packed/manifest.json'
+          spec = json.loads(manifest_path.read_text(encoding='utf-8'))
+          archive = root / spec['archive']
+          archive_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+          print('packed archive SHA-256:', archive_sha)
+
+          with tarfile.open(archive, 'r:gz') as package:
+              for rel, meta in spec['files'].items():
+                  stream = package.extractfile(meta['member'])
+                  if stream is None:
+                      raise RuntimeError(f"cannot extract {meta['member']}")
+                  actual = hashlib.sha256(stream.read()).hexdigest()
+                  if actual != meta['sha256']:
+                      raise RuntimeError(f"packed member checksum mismatch: {rel}: {actual}")
+                  print('OK packed member:', rel)
+
+          if spec.get('archive_sha256') != archive_sha:
+              print('Updating stale packed archive checksum:', spec.get('archive_sha256'), '->', archive_sha)
+              spec['archive_sha256'] = archive_sha
+              manifest_path.write_text(
+                  json.dumps(spec, ensure_ascii=False, indent=2) + '\n',
+                  encoding='utf-8',
+              )
+          PY
+
       - name: Проверить программную и CAD-часть
         shell: bash
         run: |
@@ -52,6 +88,7 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements-dev.txt
           python -m py_compile scripts/validate_cad.py
           python scripts/validate_cad.py --report /tmp/cad-validation.json
+          python scripts/materialize_sources.py --force
           npm test
 
       - name: Зафиксировать переработку
