@@ -1,6 +1,6 @@
 {
   "archive": "packed/hand-draw-esp-complete.tar.gz",
-  "archive_sha256": "d5e10db3f81bccf9cf3a3c4eb7ba0a908593dadab55545c57c6e965b25260721",
+  "archive_sha256": "a8644c4709edbd381ff239f10645d85c4d4796ffab5bdabb2413f4ad9fbf9eaa",
   "files": {
     "web/src/app.js": {"member": "hand-draw-esp/web/src/app.js", "sha256": "ca7d5a30d3ccea18e0b45bce6e2b18e3b249ee8f7f2736570a6ef9b1c71832c3"},
     "web/src/core.js": {"member": "hand-draw-esp/web/src/core.js", "sha256": "b6561d24e5a75e9306fb570c6c6d7663cbaca55eebefe2395f5efd026970f6e3"},
