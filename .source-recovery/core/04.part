@@ -1,0 +1,33 @@
+  const invertY = options.invertY !== false;
+  const returnHome = options.returnHome !== false;
+  const lines = ['; HandDraw ESP', 'G21', 'G90', `G0 Z${formatNumber(penUp)}`];
+  const ranges = [];
+  const machinePoint = (point) => ({ x: point.x, y: invertY ? page.height - point.y : point.y });
+
+  for (const path of clean) {
+    const startByte = utf8Length(`${lines.join('\n')}\n`);
+    const first = machinePoint(path[0]);
+    lines.push(`G0 Z${formatNumber(penUp)}`);
+    lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
+    lines.push(`G0 Z${formatNumber(penDown)}`);
+    if (penDwell > 0) lines.push(`G4 P${formatNumber(penDwell)}`);
+    for (let index = 1; index < path.length; index += 1) {
+      const point = machinePoint(path[index]);
+      lines.push(`G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(drawFeed, 0)}`);
+    }
+    lines.push(`G0 Z${formatNumber(penUp)}`);
+    if (penDwell > 0) lines.push(`G4 P${formatNumber(penDwell)}`);
+    const endByte = utf8Length(`${lines.join('\n')}\n`);
+    ranges.push({ startByte, endByte });
+  }
+  if (returnHome) lines.push(`G0 X0 Y0 F${formatNumber(travelFeed, 0)}`);
+  lines.push('M2');
+  const gcode = `${lines.join('\n')}\n`;
+  const totalBytes = Math.max(1, utf8Length(gcode));
+  const pathByteRanges = ranges.map((range) => ({
+    ...range,
+    startFraction: range.startByte / totalBytes,
+    endFraction: range.endByte / totalBytes,
+  }));
+  return { gcode, pathByteRanges, validation, estimate: estimateJob(clean, { drawFeed, travelFeed, penDwell }) };
+}
