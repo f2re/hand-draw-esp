@@ -9,57 +9,6 @@ permissions:
   contents: read
 
 jobs:
-  repair-recovered-source:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/cad-rework'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/cad-rework
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Удалить перекрытие частей восстановленного core.js
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("web/src/core.js")
-          text = path.read_text(encoding="utf-8")
-          duplicated = """  const heightJitter = Math.max(0, finiteNumber(options.heightJitter, 0));
-            const random = mulberry32((finiteNumber(options.seed, 1) ^ hashText(text)) >>> 0);
-            const heightJitter = Math.max(0, finiteNumber(options.heightJitter, 0));
-            const random = mulberry32((finiteNumber(options.seed, 1) ^ hashText(text)) >>> 0);
-          """
-          replacement = """  const heightJitter = Math.max(0, finiteNumber(options.heightJitter, 0));
-            const random = mulberry32((finiteNumber(options.seed, 1) ^ hashText(text)) >>> 0);
-          """
-          count = text.count(duplicated)
-          if count == 1:
-              path.write_text(text.replace(duplicated, replacement), encoding="utf-8")
-          elif count == 0:
-              print("Перекрытие уже устранено.")
-          else:
-              raise SystemExit(f"Неожиданное число совпадений: {count}")
-          PY
-          node --check web/src/core.js
-          node --check web/src/app.js
-          python -m json.tool web/src/fonts/technical-cyrillic.json >/dev/null
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add web/src/core.js
-          if git diff --cached --quiet; then
-            echo "Исправление уже применено."
-            exit 0
-          fi
-          git commit -m "fix(web): remove recovered source overlap"
-          git push origin HEAD:agent/cad-rework
-
   validate:
     runs-on: ubuntu-latest
     steps:
