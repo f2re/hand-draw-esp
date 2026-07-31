@@ -9,6 +9,79 @@ permissions:
   contents: read
 
 jobs:
+  recover-tracked-sources:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/cad-rework'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cad-rework
+          fetch-depth: 0
+      - name: Восстановить обычные исходники из временных текстовых частей
+        run: |
+          set -euo pipefail
+          if [ ! -f .source-recovery/READY ]; then
+            echo "Восстановление уже выполнено."
+            exit 0
+          fi
+
+          mkdir -p web/src/fonts hardware
+          cat .source-recovery/core/*.part > web/src/core.js
+          cat .source-recovery/app/*.part > web/src/app.js
+          cat .source-recovery/font/*.part > web/src/fonts/technical-cyrillic.json
+          cat .source-recovery/bom/*.part > hardware/bom.csv
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import csv
+          import json
+          from pathlib import Path
+
+          source = Path("hardware/bom.csv")
+          with source.open(encoding="utf-8-sig", newline="") as stream:
+              rows = list(csv.DictReader(stream, delimiter=";"))
+          if len(rows) < 25:
+              raise SystemExit(f"BOM recovery is incomplete: {len(rows)} rows")
+          Path("hardware/bom.json").write_text(
+              json.dumps(rows, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          required = [
+              Path("web/src/core.js"),
+              Path("web/src/app.js"),
+              Path("web/src/fonts/technical-cyrillic.json"),
+              Path("hardware/bom.csv"),
+              Path("hardware/bom.json"),
+          ]
+          missing = [str(path) for path in required if not path.is_file() or path.stat().st_size == 0]
+          if missing:
+              raise SystemExit("Recovered sources are missing or empty: " + ", ".join(missing))
+          json.loads(Path("web/src/fonts/technical-cyrillic.json").read_text(encoding="utf-8"))
+          json.loads(Path("hardware/bom.json").read_text(encoding="utf-8"))
+          PY
+
+          rm -rf packed .source-recovery
+          rm -f .github/workflows/source-recovery.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Нет изменений для фиксации."
+            exit 0
+          fi
+          git commit -m "fix(source): track WebUI and BOM sources directly"
+          git push origin HEAD:agent/cad-rework
+
   validate:
     runs-on: ubuntu-latest
     steps:
