@@ -1,8 +1,9 @@
 name: Bootstrap complete HandDraw ESP project
 
 on:
-  issues:
-    types: [opened, edited]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,14 +15,12 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event.issue.title == '[bootstrap] publish complete HandDraw ESP project'
     runs-on: ubuntu-latest
     steps:
       - name: Mark workflow start
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: gh issue comment "${ISSUE_NUMBER}" --body "Bootstrap workflow started for commit $GITHUB_SHA."
+        run: gh issue comment 1 --body "Scheduled bootstrap workflow started for commit $GITHUB_SHA."
 
       - name: Checkout current main
         uses: actions/checkout@v4
@@ -81,5 +80,4 @@ jobs:
       - name: Close bootstrap issue
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: gh issue close "${ISSUE_NUMBER}" --comment "Полный проект опубликован в main; одноразовый bootstrap-workflow удалён итоговым коммитом."
+        run: gh issue close 1 --comment "Полный проект опубликован в main; одноразовый bootstrap-workflow удалён итоговым коммитом."
