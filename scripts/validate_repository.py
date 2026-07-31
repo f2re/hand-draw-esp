@@ -30,7 +30,10 @@ def validate_config() -> None:
     axes = config["axes"]
     if axes["x"]["steps_per_mm"] != 80 or axes["y"]["steps_per_mm"] != 80:
         fail("GT2/20T scale must be 80 steps/mm at 1/16 microstepping")
-    if axes["x"]["motor0"]["limit_neg_pin"] != "gpio.36" or axes["y"]["motor0"]["limit_neg_pin"] != "gpio.35":
+    if (
+        axes["x"]["motor0"]["limit_neg_pin"] != "gpio.36"
+        or axes["y"]["motor0"]["limit_neg_pin"] != "gpio.35"
+    ):
         fail("limit pin mismatch")
     servo = axes["z"]["motor0"]["rc_servo"]
     if servo["output_pin"] != "gpio.32" or servo["pwm_hz"] != 50:
@@ -40,23 +43,77 @@ def validate_config() -> None:
 
 
 def validate_bom() -> None:
-    with (ROOT / "hardware" / "bom.csv").open(encoding="utf-8-sig", newline="") as stream:
+    with (ROOT / "hardware" / "bom.csv").open(
+        encoding="utf-8-sig", newline=""
+    ) as stream:
         rows = list(csv.DictReader(stream, delimiter=";"))
     if len(rows) < 25:
         fail(f"BOM is unexpectedly short: {len(rows)} rows")
     for row in rows:
-        if not row.get("Позиция") or not row.get("Спецификация") or not row.get("Критерий приёмки"):
+        if (
+            not row.get("Позиция")
+            or not row.get("Спецификация")
+            or not row.get("Критерий приёмки")
+        ):
             fail(f"incomplete BOM row {row.get('№')}")
-        links = [row.get(f"Ссылка {index}", "").strip() for index in range(1, 5)]
-        variants = [row.get(f"Вариант {index}", "").strip() for index in range(1, 5)]
-        if sum(bool(link) for link in links) < 3 or sum(bool(name) for name in variants) < 3:
+        links = [
+            row.get(f"Ссылка {index}", "").strip() for index in range(1, 5)
+        ]
+        variants = [
+            row.get(f"Вариант {index}", "").strip() for index in range(1, 5)
+        ]
+        if sum(bool(link) for link in links) < 3 or sum(
+            bool(name) for name in variants
+        ) < 3:
             fail(f"BOM row {row.get('№')} has fewer than three purchase options")
         if any(link and not link.startswith("https://") for link in links):
             fail(f"BOM row {row.get('№')} contains a non-HTTPS link")
 
 
+def validate_measurement_template() -> None:
+    path = ROOT / "hardware" / "measurements.example.csv"
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream, delimiter=";"))
+    required_columns = {
+        "Группа",
+        "Компонент",
+        "Артикул/ревизия",
+        "Параметр",
+        "Номинал",
+        "Принято в CAD",
+        "Ед.",
+        "Допуск/критерий",
+        "Статус",
+    }
+    if not rows:
+        fail("measurement template is empty")
+    columns = set(rows[0])
+    missing_columns = sorted(required_columns - columns)
+    if missing_columns:
+        fail("measurement template lacks columns: " + ", ".join(missing_columns))
+    required_groups = {
+        "Направляющая",
+        "Профиль",
+        "Двигатель",
+        "Драйвер",
+        "Серво",
+        "Ремень",
+        "Перо",
+        "Концевик",
+        "Контроллер",
+    }
+    groups = {row.get("Группа", "").strip() for row in rows}
+    missing_groups = sorted(required_groups - groups)
+    if missing_groups:
+        fail("measurement template lacks groups: " + ", ".join(missing_groups))
+
+
 def validate_font() -> None:
-    font = json.loads((ROOT / "web/src/fonts/technical-cyrillic.json").read_text(encoding="utf-8"))
+    font = json.loads(
+        (ROOT / "web/src/fonts/technical-cyrillic.json").read_text(
+            encoding="utf-8"
+        )
+    )
     if font.get("format") != "hand-draw-font-v1":
         fail("font format mismatch")
     required = set("АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ0123456789")
@@ -68,11 +125,17 @@ def validate_font() -> None:
 def validate_web_build() -> None:
     html_path = ROOT / "dist/index.html"
     gzip_path = ROOT / "dist/index.html.gz"
-    manifest = json.loads((ROOT / "dist/manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (ROOT / "dist/manifest.json").read_text(encoding="utf-8")
+    )
     html = html_path.read_text(encoding="utf-8")
     if manifest.get("offline") is not True:
         fail("WebUI manifest is not marked offline")
-    if re.search(r"<script[^>]+src=|<link[^>]+rel=[\"'](?:stylesheet|preload|modulepreload)", html, re.I):
+    if re.search(
+        r"<script[^>]+src=|<link[^>]+rel=[\"'](?:stylesheet|preload|modulepreload)",
+        html,
+        re.I,
+    ):
         fail("built WebUI still references local runtime assets")
     if "window.HANDDRAW_EMBEDDED_FONT=" not in html:
         fail("built font is not embedded")
@@ -83,25 +146,104 @@ def validate_web_build() -> None:
 
 
 def validate_scad() -> None:
-    text = (ROOT / "hardware/cad/plotter_parts.scad").read_text(encoding="utf-8")
-    modules = set(re.findall(r"^module\s+([A-Za-z0-9_]+)\s*\(", text, re.M))
-    required = {"y_dual_carriage_plate","x_carriage","pen_body","pen_slider","pen_cap","servo_bracket","motor_mount","idler_mount","belt_clamp","support_roller","endstop_bracket","electronics_base","electronics_lid","cable_clip","fit_coupon"}
+    model_path = ROOT / "hardware/cad/plotter_parts.scad"
+    dimensions_path = ROOT / "hardware/cad/component_dimensions.scad"
+    text = model_path.read_text(encoding="utf-8")
+    dimensions = dimensions_path.read_text(encoding="utf-8")
+    if "include <component_dimensions.scad>" not in text:
+        fail("plotter_parts.scad does not include component dimensions")
+    modules = set(
+        re.findall(r"^module\s+([A-Za-z0-9_]+)\s*\(", text, re.M)
+    )
+    required = {
+        "y_carriage_plate",
+        "beam_saddle",
+        "x_carriage_plate",
+        "pen_body",
+        "pen_slider",
+        "pen_cap",
+        "servo_bracket",
+        "y_motor_mount",
+        "y_idler_mount",
+        "x_motor_mount",
+        "x_idler_mount",
+        "belt_clamp",
+        "support_roller",
+        "endstop_bracket",
+        "electronics_base",
+        "electronics_lid",
+        "cable_clip",
+        "fit_coupon",
+        "full_machine",
+        "motion_envelope_preview",
+    }
     missing = sorted(required.difference(modules))
     if missing:
         fail("SCAD modules missing: " + ", ".join(missing))
-    if text.count("{") != text.count("}"):
-        fail("SCAD braces are unbalanced")
+    if "module assembly_preview" in text:
+        fail("legacy catalogue-style assembly preview remains in CAD")
+    for source_name, source_text in (
+        (model_path.name, text),
+        (dimensions_path.name, dimensions),
+    ):
+        if source_text.count("{") != source_text.count("}"):
+            fail(f"SCAD braces are unbalanced in {source_name}")
+        if "\t" in source_text:
+            fail(f"SCAD source contains a tab in {source_name}")
+    for token in (
+        "work_travel_x = 225",
+        "work_travel_y = 315",
+        "gt2_pulley_teeth = 20",
+        "y_block_spacing = 52",
+    ):
+        if token not in dimensions:
+            fail(f"CAD dimensions lost required invariant: {token}")
 
 
 def validate_docs() -> None:
-    required = ["README.md","docs/ARCHITECTURE.md","docs/WEB_INTERFACE.md","docs/CALIBRATION.md","docs/SOURCES.md","docs/START_HERE.md","docs/images/web-ui.svg","docs/images/printed-parts.svg","CONTRIBUTING.md","NOTICE.md","hardware/BOM.md","hardware/PRINTING.md","hardware/ASSEMBLY.md","hardware/WIRING.md","firmware/fluidnc/INSTALL.md","scripts/setup_project.py","scripts/prepare_controller_bundle.py","scripts/install_fluidnc.py",".github/workflows/release.yml"]
+    required = [
+        "README.md",
+        "CONTRIBUTING.md",
+        "NOTICE.md",
+        "docs/ARCHITECTURE.md",
+        "docs/WEB_INTERFACE.md",
+        "docs/CALIBRATION.md",
+        "docs/SOURCES.md",
+        "docs/START_HERE.md",
+        "docs/CAD_REWORK_PLAN.md",
+        "docs/images/web-ui.svg",
+        "docs/images/printed-parts.svg",
+        "hardware/BOM.md",
+        "hardware/PRINTING.md",
+        "hardware/ASSEMBLY.md",
+        "hardware/WIRING.md",
+        "hardware/MEASUREMENTS.md",
+        "hardware/measurements.example.csv",
+        "hardware/cad/README.md",
+        "hardware/cad/component_dimensions.scad",
+        "hardware/cad/plotter_parts.scad",
+        "firmware/fluidnc/INSTALL.md",
+        "scripts/setup_project.py",
+        "scripts/prepare_controller_bundle.py",
+        "scripts/install_fluidnc.py",
+        "scripts/validate_cad.py",
+        ".github/workflows/release.yml",
+    ]
     missing = [name for name in required if not (ROOT / name).is_file()]
     if missing:
         fail("documentation files missing: " + ", ".join(missing))
 
 
 def main() -> int:
-    checks = [validate_config, validate_bom, validate_font, validate_web_build, validate_scad, validate_docs]
+    checks = [
+        validate_config,
+        validate_bom,
+        validate_measurement_template,
+        validate_font,
+        validate_web_build,
+        validate_scad,
+        validate_docs,
+    ]
     try:
         for check in checks:
             check()
