@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restore large reproducible sources from the checked-in project archive."""
+"""Restore reproducible sources from the checked-in project archive."""
 from __future__ import annotations
 
 import argparse
@@ -19,14 +19,23 @@ def digest(data: bytes) -> str:
 def materialize(force: bool = False) -> list[Path]:
     spec = json.loads(SPEC.read_text(encoding="utf-8"))
     archive = ROOT / spec["archive"]
-    if digest(archive.read_bytes()) != spec["archive_sha256"]:
-        raise RuntimeError("packed archive checksum mismatch")
+    actual_archive_sha = digest(archive.read_bytes())
+    expected_archive_sha = str(spec["archive_sha256"])
+    if actual_archive_sha != expected_archive_sha:
+        raise RuntimeError(
+            "packed archive checksum mismatch: "
+            f"expected {expected_archive_sha}, actual {actual_archive_sha}"
+        )
 
     restored: list[Path] = []
     with tarfile.open(archive, "r:gz") as tf:
         for rel, meta in spec["files"].items():
             target = ROOT / rel
-            if target.exists() and digest(target.read_bytes()) == meta["sha256"] and not force:
+            if (
+                target.exists()
+                and digest(target.read_bytes()) == meta["sha256"]
+                and not force
+            ):
                 continue
 
             member = tf.getmember(meta["member"])
@@ -36,8 +45,13 @@ def materialize(force: bool = False) -> list[Path]:
             if stream is None:
                 raise RuntimeError(f"cannot read {meta['member']}")
             data = stream.read()
-            if digest(data) != meta["sha256"]:
-                raise RuntimeError(f"checksum mismatch: {rel}")
+            actual_file_sha = digest(data)
+            expected_file_sha = str(meta["sha256"])
+            if actual_file_sha != expected_file_sha:
+                raise RuntimeError(
+                    f"checksum mismatch for {rel}: "
+                    f"expected {expected_file_sha}, actual {actual_file_sha}"
+                )
 
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
