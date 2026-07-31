@@ -1,0 +1,152 @@
+        bestReverse = false;
+      }
+      if (allowReverse) {
+        const reverseDistance = distance(current, path[path.length - 1]);
+        if (reverseDistance < bestDistance) {
+          bestDistance = reverseDistance;
+          bestIndex = index;
+          bestReverse = true;
+        }
+      }
+    }
+    let [selected] = remaining.splice(bestIndex, 1);
+    if (bestReverse) selected = selected.reverse();
+    optimized.push(selected);
+    current = selected[selected.length - 1];
+  }
+  return { paths: optimized, travelBefore: before, travelAfter: calculateTravelLength(optimized, start) };
+}
+
+function pixelDarkness(imageData, x, y) {
+  const index = (y * imageData.width + x) * 4;
+  const data = imageData.data;
+  const alpha = (data[index + 3] ?? 255) / 255;
+  const luminance = (0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2]) / 255;
+  return (1 - luminance) * alpha;
+}
+
+export function rasterToHatchPaths(imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return [];
+  const widthMm = Math.max(0.1, finiteNumber(options.widthMm, 100));
+  const heightMm = Math.max(0.1, finiteNumber(options.heightMm, widthMm * imageData.height / imageData.width));
+  const threshold = Math.max(0, Math.min(1, finiteNumber(options.threshold, 0.5)));
+  const rowSpacingMm = Math.max(0.1, finiteNumber(options.rowSpacingMm, 1));
+  const invert = Boolean(options.invert);
+  const rowStep = Math.max(1, Math.round((rowSpacingMm / heightMm) * imageData.height));
+  const paths = [];
+  for (let y = 0; y < imageData.height; y += rowStep) {
+    let segment = [];
+    const direction = Math.floor(y / rowStep) % 2 === 0 ? 1 : -1;
+    for (let offset = 0; offset < imageData.width; offset += 1) {
+      const x = direction > 0 ? offset : imageData.width - 1 - offset;
+      const darkness = invert ? 1 - pixelDarkness(imageData, x, y) : pixelDarkness(imageData, x, y);
+      const active = darkness >= threshold;
+      if (active) {
+        segment.push({ x: (x / Math.max(1, imageData.width - 1)) * widthMm, y: (y / Math.max(1, imageData.height - 1)) * heightMm });
+      } else if (segment.length) {
+        if (segment.length >= 2) paths.push([segment[0], segment[segment.length - 1]]);
+        segment = [];
+      }
+    }
+    if (segment.length >= 2) paths.push([segment[0], segment[segment.length - 1]]);
+  }
+  return cleanPaths(paths);
+}
+
+function segmentKey(point, precision = 4) {
+  return `${point.x.toFixed(precision)},${point.y.toFixed(precision)}`;
+}
+
+function joinSegments(segments) {
+  const unused = segments.map((segment) => segment.map((point) => ({ ...point })));
+  const result = [];
+  while (unused.length) {
+    const path = unused.pop();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const startKey = segmentKey(path[0]);
+      const endKey = segmentKey(path[path.length - 1]);
+      for (let index = 0; index < unused.length; index += 1) {
+        const candidate = unused[index];
+        const a = segmentKey(candidate[0]);
+        const b = segmentKey(candidate[candidate.length - 1]);
+        if (a === endKey) path.push(...candidate.slice(1));
+        else if (b === endKey) path.push(...candidate.slice(0, -1).reverse());
+        else if (b === startKey) path.unshift(...candidate.slice(0, -1));
+        else if (a === startKey) path.unshift(...candidate.slice(1).reverse());
+        else continue;
+        unused.splice(index, 1);
+        changed = true;
+        break;
+      }
+    }
+    if (path.length >= 2) result.push(path);
+  }
+  return result;
+}
+
+export function rasterToContourPaths(imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return [];
+  const widthMm = Math.max(0.1, finiteNumber(options.widthMm, 100));
+  const heightMm = Math.max(0.1, finiteNumber(options.heightMm, widthMm * imageData.height / imageData.width));
+  const threshold = Math.max(0, Math.min(1, finiteNumber(options.threshold, 0.5)));
+  const sampleStepPx = Math.max(1, Math.round(finiteNumber(options.sampleStepPx, 1)));
+  const invert = Boolean(options.invert);
+  const active = (x, y) => {
+    if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) return false;
+    const darkness = pixelDarkness(imageData, x, y);
+    return (invert ? 1 - darkness : darkness) >= threshold;
+  };
+  const point = (x, y) => ({
+    x: (x / imageData.width) * widthMm,
+    y: (y / imageData.height) * heightMm,
+  });
+  const segments = [];
+  for (let y = 0; y < imageData.height; y += sampleStepPx) {
+    for (let x = 0; x < imageData.width; x += sampleStepPx) {
+      if (!active(x, y)) continue;
+      const x2 = Math.min(imageData.width, x + sampleStepPx);
+      const y2 = Math.min(imageData.height, y + sampleStepPx);
+      if (!active(x, y - sampleStepPx)) segments.push([point(x, y), point(x2, y)]);
+      if (!active(x + sampleStepPx, y)) segments.push([point(x2, y), point(x2, y2)]);
+      if (!active(x, y + sampleStepPx)) segments.push([point(x2, y2), point(x, y2)]);
+      if (!active(x - sampleStepPx, y)) segments.push([point(x, y2), point(x, y)]);
+    }
+  }
+  const joined = joinSegments(segments);
+  const tolerance = Math.max(0, finiteNumber(options.simplifyTolerance, Math.min(widthMm / imageData.width, heightMm / imageData.height) * 0.35));
+  return simplifyPaths(joined, tolerance);
+}
+
+function formatNumber(value, digits = 3) {
+  const normalized = Math.abs(value) < 0.0005 ? 0 : value;
+  const text = normalized.toFixed(digits);
+  return digits > 0 ? text.replace(/\.?0+$/, '') : text;
+}
+
+function utf8Length(text) {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).length;
+  if (typeof Buffer !== 'undefined') return Buffer.byteLength(text, 'utf8');
+  return unescape(encodeURIComponent(text)).length;
+}
+
+export function estimateJob(paths, options = {}) {
+  const drawFeed = Math.max(1, finiteNumber(options.drawFeed, 1200));
+  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 4000));
+  const penDwell = Math.max(0, finiteNumber(options.penDwell, 0.12));
+  const drawLength = calculateDrawLength(paths);
+  const travelLength = calculateTravelLength(paths, { x: 0, y: 0 });
+  const pathCount = cleanPaths(paths).length;
+  const seconds = drawLength / drawFeed * 60 + travelLength / travelFeed * 60 + pathCount * penDwell * 2;
+  return { drawLength, travelLength, seconds, pathCount, pointCount: cleanPaths(paths).reduce((sum, path) => sum + path.length, 0) };
+}
+
+export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
+  const clean = cleanPaths(paths);
+  const validation = validatePathsWithinPage(clean, page);
+  const drawFeed = Math.max(1, finiteNumber(options.drawFeed, 1200));
+  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 4000));
+  const penUp = finiteNumber(options.penUp, 5);
+  const penDown = finiteNumber(options.penDown, 0);
+  const penDwell = Math.max(0, finiteNumber(options.penDwell, 0.12));
