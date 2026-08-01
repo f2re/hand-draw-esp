@@ -4,6 +4,8 @@
 # Pen lift: RC servo connected to the board's TTL/PWM signal (GPIO32)
 # IMPORTANT: the servo red wire is powered by an external regulated 5.0 V supply.
 # Only the signal and common GND are shared with the controller.
+# Motion limits are intentionally conservative for the first reproducible build.
+# Tool-specific drawing/travel speeds are lower and are selected by HandDraw WebUI.
 
 board: MKS-DLC32 V2.1
 name: ESP32 A4 Pen Plotter
@@ -23,8 +25,8 @@ axes:
 
   x:
     steps_per_mm: 80.000
-    max_rate_mm_per_min: 6000.000
-    acceleration_mm_per_sec2: 300.000
+    max_rate_mm_per_min: 4800.000
+    acceleration_mm_per_sec2: 180.000
     max_travel_mm: 225.000
     soft_limits: true
     homing:
@@ -48,8 +50,8 @@ axes:
 
   y:
     steps_per_mm: 80.000
-    max_rate_mm_per_min: 6000.000
-    acceleration_mm_per_sec2: 250.000
+    max_rate_mm_per_min: 4200.000
+    acceleration_mm_per_sec2: 140.000
     max_travel_mm: 315.000
     soft_limits: true
     homing:
@@ -75,8 +77,8 @@ axes:
   # Mount the servo horn so that both endpoints remain clear of mechanical stops.
   z:
     steps_per_mm: 1.000
-    max_rate_mm_per_min: 300.000
-    acceleration_mm_per_sec2: 100.000
+    max_rate_mm_per_min: 240.000
+    acceleration_mm_per_sec2: 80.000
     max_travel_mm: 5.000
     soft_limits: false
     motor0:
@@ -140,5 +142,7 @@ user_outputs:
   digital3_pin: NO_PIN
 
 start:
-  # Leave false while bringing the machine up. Set true after both limit switches are verified.
+  # Commissioning profile: false permits 1–5 mm direction checks before homing.
+  # HandDraw WebUI still blocks job start until homing succeeds in the current session.
+  # Set true after both switches and repeated $H cycles have been physically verified.
   must_home: false

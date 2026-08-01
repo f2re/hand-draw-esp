@@ -30,6 +30,10 @@ def validate_config() -> None:
     axes = config["axes"]
     if axes["x"]["steps_per_mm"] != 80 or axes["y"]["steps_per_mm"] != 80:
         fail("GT2/20T scale must be 80 steps/mm at 1/16 microstepping")
+    if axes["x"]["max_rate_mm_per_min"] > 4800 or axes["y"]["max_rate_mm_per_min"] > 4200:
+        fail("commissioning motion limits became less conservative")
+    if axes["x"]["acceleration_mm_per_sec2"] > 180 or axes["y"]["acceleration_mm_per_sec2"] > 140:
+        fail("commissioning acceleration limits became less conservative")
     if (
         axes["x"]["motor0"]["limit_neg_pin"] != "gpio.36"
         or axes["y"]["motor0"]["limit_neg_pin"] != "gpio.35"
@@ -200,6 +204,32 @@ def validate_scad() -> None:
             fail(f"CAD dimensions lost required invariant: {token}")
 
 
+def validate_operator_ui() -> None:
+    core = (ROOT / "web/src/core.js").read_text(encoding="utf-8")
+    app = (ROOT / "web/src/app.js").read_text(encoding="utf-8")
+    fluidnc = (ROOT / "web/src/fluidnc.js").read_text(encoding="utf-8")
+    html = (ROOT / "web/src/index.html").read_text(encoding="utf-8")
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    required_profiles = {"fineliner", "gel", "ballpoint", "pencil", "ink", "marker"}
+    missing_profiles = sorted(profile for profile in required_profiles if f"{profile}: freezeProfile" not in core)
+    if missing_profiles:
+        fail("tool profiles missing: " + ", ".join(missing_profiles))
+    for token in ("rasterToComicPaths", "directional-repeat", "G94", "generateBoundaryGcode"):
+        if token not in core:
+            fail(f"motion/media logic lost required token: {token}")
+    for token in ("readyHomed", "confirmPenTest", "confirmBoundary", "confirmSupervision"):
+        if token not in html:
+            fail(f"operator preflight lost required control: {token}")
+    if html.count('role="tab"') < 8 or html.count('role="tabpanel"') < 8:
+        fail("operator navigation lacks tab/tabpanel semantics")
+    if "bindRovingTabs" not in app or "Object.values(ready).every(Boolean)" not in app:
+        fail("keyboard navigation or launch gate is missing")
+    if "safeJobFileName" not in fluidnc or "putFile(path" not in fluidnc:
+        fail("portable naming or verified file upload is missing")
+    if "tests/browser_smoke.py --no-screenshot" not in ci or "playwright install" not in ci:
+        fail("CI does not execute the real browser operator flow")
+
+
 def validate_docs() -> None:
     required = [
         "README.md",
@@ -207,6 +237,8 @@ def validate_docs() -> None:
         "NOTICE.md",
         "docs/ARCHITECTURE.md",
         "docs/WEB_INTERFACE.md",
+        "docs/FIRMWARE_AND_GCODE.md",
+        "docs/ART_DIRECTION.md",
         "docs/CALIBRATION.md",
         "docs/SOURCES.md",
         "docs/START_HERE.md",
@@ -242,6 +274,7 @@ def main() -> int:
         validate_font,
         validate_web_build,
         validate_scad,
+        validate_operator_ui,
         validate_docs,
     ]
     try:

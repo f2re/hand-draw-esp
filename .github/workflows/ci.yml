@@ -40,6 +40,22 @@ jobs:
             build/cad-validation.json
           if-no-files-found: error
 
+  ui-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить Playwright и Chromium
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-browser.txt
+          python -m playwright install --with-deps chromium
+      - name: Собрать WebUI
+        run: python scripts/build_webui.py
+      - name: Проверить основной поток и адаптивность
+        run: python tests/browser_smoke.py --no-screenshot
+
   cad-openscad:
     runs-on: ubuntu-latest
     steps:

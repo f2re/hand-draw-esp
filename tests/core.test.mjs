@@ -4,11 +4,44 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PAGE_PRESETS, boundsOfPaths, calculateTravelLength, cleanPaths, fitPathsToPage, generateGcode, layoutText, optimizePathOrder, rasterToContourPaths, rasterToHatchPaths, validateFont, validatePathsWithinPage } from '../web/src/core.js';
-import { FluidNCClient, parseFluidNCStatus } from '../web/src/fluidnc.js';
+import {
+  PAGE_PRESETS,
+  TEXT_PRESETS,
+  TOOL_PROFILES,
+  analyzeJob,
+  boundsOfPaths,
+  calculateTravelLength,
+  cleanPaths,
+  fitPathsToPage,
+  generateBoundaryGcode,
+  generateGcode,
+  getToolProfile,
+  layoutText,
+  optimizePathOrder,
+  rasterToComicPaths,
+  rasterToContourPaths,
+  rasterToHatchPaths,
+  validateFont,
+  validatePathsWithinPage,
+} from '../web/src/core.js';
+import { FluidNCClient, machineStateKind, parseFluidNCStatus, safeJobFileName } from '../web/src/fluidnc.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const font = validateFont(JSON.parse(fs.readFileSync(path.join(here, '../web/src/fonts/technical-cyrillic.json'), 'utf8')));
+
+function sampleImage(width = 24, height = 18) {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const inside = x >= 5 && x <= 18 && y >= 4 && y <= 13;
+      const value = inside ? Math.max(0, 30 + (x - 5) * 7) : 255;
+      const index = (y * width + x) * 4;
+      data[index] = data[index + 1] = data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+  }
+  return { data, width, height };
+}
 
 test('bundled font contains Cyrillic, Latin and engineering symbols', () => {
   for (const symbol of ['А', 'Я', 'A', 'Z', '0', '9', '№', '°', '+', '-']) {
@@ -18,20 +51,45 @@ test('bundled font contains Cyrillic, Latin and engineering symbols', () => {
   assert.equal(font.meta.author.length > 0, true);
 });
 
-test('Russian technical text produces finite one-line paths', () => {
-  const result = layoutText('МЕТЕОСТАНЦИЯ № 12\nТЕМПЕРАТУРА +18 °C', font, { fontSize: 7, letterSpacing: 0.8, wordSpacing: 3, lineHeight: 1.4, originX: 10, originY: 10, maxWidth: 190, seed: 17 });
-  assert.ok(result.paths.length > 25);
-  assert.deepEqual(result.unsupported, []);
-  const box = boundsOfPaths(result.paths);
+test('human handwriting preset produces finite repeatable one-line paths', () => {
+  const preset = TEXT_PRESETS.handwriting;
+  const options = {
+    ...preset,
+    fontSize: preset.fontSize,
+    lowercaseScale: preset.lowercaseScale,
+    originX: 10,
+    originY: 10,
+    maxWidth: 190,
+    seed: 17,
+  };
+  const first = layoutText('Метеостанция № 12\nТемпература +18 °C', font, options);
+  const second = layoutText('Метеостанция № 12\nТемпература +18 °C', font, options);
+  assert.ok(first.paths.length > 25);
+  assert.deepEqual(first.unsupported, []);
+  assert.deepEqual(first.paths, second.paths);
+  const box = boundsOfPaths(first.paths);
   assert.ok(box.width > 50 && box.height > 8);
-  assert.ok(result.paths.flat().every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
+  assert.ok(first.paths.flat().every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
 });
 
 test('lowercase fallback renders as configurable small caps', () => {
   const uppercase = layoutText('АБВ', font, { fontSize: 10, lowercaseScale: 0.7 });
   const lowercase = layoutText('абв', font, { fontSize: 10, lowercaseScale: 0.7 });
-  const upperBox = boundsOfPaths(uppercase.paths); const lowerBox = boundsOfPaths(lowercase.paths);
-  assert.ok(lowerBox.height < upperBox.height * 0.8); assert.ok(lowerBox.width < upperBox.width);
+  const upperBox = boundsOfPaths(uppercase.paths);
+  const lowerBox = boundsOfPaths(lowercase.paths);
+  assert.ok(lowerBox.height < upperBox.height * 0.8);
+  assert.ok(lowerBox.width < upperBox.width);
+});
+
+test('tool profiles expose conservative motion and media defaults', () => {
+  assert.ok(Object.keys(TOOL_PROFILES).length >= 6);
+  const ink = getToolProfile('ink');
+  const fineliner = getToolProfile('fineliner');
+  assert.equal(ink.allowReverse, false);
+  assert.ok(ink.drawFeed < fineliner.drawFeed);
+  assert.ok(ink.penDownDwell > fineliner.penDownDwell);
+  assert.ok(ink.maxContinuousStroke < fineliner.maxContinuousStroke);
+  assert.equal(getToolProfile('missing').id, 'fineliner');
 });
 
 test('fit and validation keep imported geometry inside A4 margins', () => {
@@ -41,40 +99,123 @@ test('fit and validation keep imported geometry inside A4 margins', () => {
   const validation = validatePathsWithinPage(fitted, page);
   assert.equal(validation.valid, true, validation.issues.join('; '));
   const box = boundsOfPaths(fitted);
-  assert.ok(box.minX >= 9.99 && box.minY >= 11.99); assert.ok(box.maxX <= 200.01 && box.maxY <= 285.01);
+  assert.ok(box.minX >= 9.99 && box.minY >= 11.99);
+  assert.ok(box.maxX <= 200.01 && box.maxY <= 285.01);
 });
 
-test('path optimizer reduces or preserves travel length', () => {
+test('path optimizer reduces or preserves travel length and respects direction lock', () => {
   const paths = [[{ x: 100, y: 100 }, { x: 110, y: 100 }], [{ x: 10, y: 10 }, { x: 20, y: 10 }], [{ x: 60, y: 30 }, { x: 50, y: 30 }]];
   const before = calculateTravelLength(paths, { x: 0, y: 0 });
   const optimized = optimizePathOrder(paths, { x: 0, y: 0 }, true);
-  assert.equal(optimized.paths.length, 3); assert.ok(calculateTravelLength(optimized.paths, { x: 0, y: 0 }) <= before);
+  const directed = optimizePathOrder(paths, { x: 0, y: 0 }, false);
+  assert.equal(optimized.paths.length, 3);
+  assert.ok(calculateTravelLength(optimized.paths, { x: 0, y: 0 }) <= before);
+  assert.deepEqual(directed.paths.find((item) => item.some((point) => point.x === 60)), paths[2]);
 });
 
-test('raster conversion creates hatch and contour trajectories', () => {
-  const width = 24, height = 18; const data = new Uint8ClampedArray(width * height * 4);
-  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) { const inside = x >= 5 && x <= 18 && y >= 4 && y <= 13; const value = inside ? 0 : 255; const index = (y * width + x) * 4; data[index] = data[index + 1] = data[index + 2] = value; data[index + 3] = 255; }
-  const imageData = { data, width, height };
-  const hatch = rasterToHatchPaths(imageData, { widthMm: 120, heightMm: 90, threshold: 0.5, rowSpacingMm: 3 });
-  const contour = rasterToContourPaths(imageData, { widthMm: 120, heightMm: 90, threshold: 0.5, sampleStepPx: 1 });
-  assert.ok(hatch.length >= 3); assert.ok(contour.length >= 1); assert.ok(cleanPaths(contour).every((item) => item.length >= 2));
+test('raster conversion creates angled hatch, crosshatch, contours and comics', () => {
+  const imageData = sampleImage();
+  const common = { widthMm: 120, heightMm: 90, threshold: 0.5, rowSpacingMm: 3 };
+  const hatch = rasterToHatchPaths(imageData, { ...common, angleDeg: 35 });
+  const cross = rasterToHatchPaths(imageData, { ...common, angleDeg: 35, crossHatch: true });
+  const contour = rasterToContourPaths(imageData, { ...common, sampleStepPx: 1 });
+  const comic = rasterToComicPaths(imageData, { ...common, angleDeg: 35, sampleStepPx: 1 });
+  assert.ok(hatch.length >= 3);
+  assert.ok(cross.length > hatch.length);
+  assert.ok(contour.length >= 1);
+  assert.ok(comic.length > contour.length);
+  assert.ok(cleanPaths(comic).every((item) => item.length >= 2));
 });
 
-test('generated G-code uses millimetres, safe pen sequence and byte progress', () => {
+test('generated G-code applies separate pen dwell, repeat passes and byte progress', () => {
   const paths = [[{ x: 10, y: 10 }, { x: 30, y: 10 }, { x: 30, y: 30 }], [{ x: 60, y: 40 }, { x: 80, y: 45 }]];
-  const result = generateGcode(paths, PAGE_PRESETS.A4_PORTRAIT, { drawFeed: 1200, travelFeed: 4000, penUp: 5, penDown: 0, penDwell: 0.12, invertY: true });
-  assert.match(result.gcode, /G21/); assert.match(result.gcode, /G90/); assert.match(result.gcode, /G0 Z5/); assert.match(result.gcode, /G0 Z0/); assert.match(result.gcode, /G1 X30 Y267 F1200/);
-  assert.equal(result.pathByteRanges.length, 2); assert.ok(result.pathByteRanges[0].endFraction < result.pathByteRanges[1].endFraction); assert.equal(result.validation.valid, true);
+  const result = generateGcode(paths, PAGE_PRESETS.A4_PORTRAIT, {
+    drawFeed: 900,
+    travelFeed: 3000,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.18,
+    penUpDwell: 0.08,
+    strokeRepeats: 2,
+    invertY: true,
+    toolId: 'pencil',
+    toolName: 'Карандаш',
+  });
+  assert.match(result.gcode, /; Tool: Карандаш/);
+  assert.match(result.gcode, /G21/);
+  assert.match(result.gcode, /G94/);
+  assert.match(result.gcode, /G0 Z5/);
+  assert.match(result.gcode, /G0 Z0/);
+  assert.match(result.gcode, /G4 P0\.18/);
+  assert.match(result.gcode, /G4 P0\.08/);
+  assert.match(result.gcode, /G1 X30 Y267 F900/);
+  assert.ok((result.gcode.match(/G1 X10 Y287 F900/g) || []).length >= 1, 'repeat pass should return to the first point');
+  assert.equal(result.pathByteRanges.length, 2);
+  assert.ok(result.pathByteRanges[0].endFraction < result.pathByteRanges[1].endFraction);
+  assert.equal(result.validation.valid, true);
+  assert.equal(result.analysis.strokeRepeats, 2);
 });
 
-test('FluidNC status parser extracts position and SD progress', () => {
+test('directional repeated strokes lift and restart instead of reversing the nib', () => {
+  const path = [[{ x: 10, y: 10 }, { x: 40, y: 10 }]];
+  const result = generateGcode(path, PAGE_PRESETS.A4_PORTRAIT, {
+    ...TOOL_PROFILES.ink,
+    strokeRepeats: 2,
+    invertY: true,
+  });
+  assert.equal(result.analysis.allowReverse, false);
+  assert.equal(result.analysis.penLifts, 2);
+  assert.ok((result.gcode.match(/G0 X10 Y287 F2100/g) || []).length >= 2);
+  assert.equal((result.gcode.match(/G1 X40 Y287 F520/g) || []).length, 2);
+  assert.doesNotMatch(result.gcode, /G1 X10 Y287 F520/);
+  assert.ok(result.analysis.warnings.some((item) => item.code === 'directional-repeat'));
+});
+
+test('job filenames are transliterated and limited to portable ASCII', () => {
+  assert.equal(safeJobFileName('Комикс № 1'), 'Komiks-No-1.gcode');
+  assert.equal(safeJobFileName('../../опасное имя.gcode'), 'opasnoe-imya.gcode');
+  assert.equal(safeJobFileName(''), 'handdraw-job.gcode');
+});
+
+test('job analysis reports unsafe pen range and long ink strokes', () => {
+  const paths = [[{ x: 0, y: 0 }, { x: 180, y: 0 }]];
+  const analysis = analyzeJob(paths, { ...TOOL_PROFILES.ink, penUp: 0, penDown: 1 });
+  assert.equal(analysis.valid, false);
+  assert.ok(analysis.errors.some((item) => item.code === 'pen-range'));
+  assert.ok(analysis.warnings.some((item) => item.code === 'continuous-stroke'));
+  const fast = analyzeJob(paths, { ...TOOL_PROFILES.fineliner, travelFeed: 5000 });
+  assert.ok(fast.errors.some((item) => item.code === 'feed-limit'));
+});
+
+test('boundary program never lowers the pen', () => {
+  const result = generateBoundaryGcode({ minX: 10, minY: 20, maxX: 80, maxY: 100, width: 70, height: 80 }, PAGE_PRESETS.A4_PORTRAIT, { penUp: 5, travelFeed: 2000 });
+  assert.match(result.gcode, /boundary check/);
+  assert.match(result.gcode, /G0 Z5/);
+  assert.doesNotMatch(result.gcode, /Z0(?:\D|$)/);
+  assert.ok(result.bounds.minX >= 0 && result.bounds.maxY <= 297);
+});
+
+test('FluidNC status parser extracts position, state kind and SD progress', () => {
   const status = parseFluidNCStatus('<Run|MPos:12.500,44.000,0.000|FS:1200,0|SD:37.25,/jobs/demo.gcode>');
-  assert.equal(status.state, 'Run'); assert.deepEqual(status.mpos, { x: 12.5, y: 44, z: 0 }); assert.equal(status.feed, 1200); assert.equal(status.job.percent, 37.25);
-  const complete = parseFluidNCStatus('<Idle|MPos:0,0,5|SD:/jobs/demo.gcode: Sent>'); assert.equal(complete.job.percent, 100); assert.equal(complete.job.complete, true);
+  assert.equal(status.state, 'Run');
+  assert.deepEqual(status.mpos, { x: 12.5, y: 44, z: 0 });
+  assert.equal(status.feed, 1200);
+  assert.equal(status.job.percent, 37.25);
+  assert.equal(machineStateKind(status), 'motion');
+  assert.equal(machineStateKind(parseFluidNCStatus('<Idle|MPos:0,0,5>')), 'idle');
+  const complete = parseFluidNCStatus('<Idle|MPos:0,0,5|SD:/jobs/demo.gcode: Sent>');
+  assert.equal(complete.job.percent, 100);
+  assert.equal(complete.job.complete, true);
 });
 
 test('FluidNC job commands address SD and local roots correctly', () => {
-  const client = Object.create(FluidNCClient.prototype); const commands = []; client.sendCommand = (command) => commands.push(command); client.fileName = 'handdraw-job.gcode';
-  client.startJob('/jobs/demo.gcode', 'sd'); client.startJob('/sd/jobs/legacy.gcode', 'sd'); client.startJob('/short.gcode', 'local');
+  const client = Object.create(FluidNCClient.prototype);
+  const commands = [];
+  client.ensureIdle = () => {};
+  client.sendCommand = (command) => commands.push(command);
+  client.fileName = 'handdraw-job.gcode';
+  client.startJob('/jobs/demo.gcode', 'sd');
+  client.startJob('/sd/jobs/legacy.gcode', 'sd');
+  client.startJob('/short.gcode', 'local');
   assert.deepEqual(commands, ['$SD/Run=/jobs/demo.gcode', '$SD/Run=/jobs/legacy.gcode', '$LocalFS/Run=/short.gcode']);
 });

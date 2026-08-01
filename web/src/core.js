@@ -3,6 +3,197 @@ export const PAGE_PRESETS = Object.freeze({
   A4_LANDSCAPE: Object.freeze({ id: 'A4_LANDSCAPE', name: 'A4 · альбомная', width: 297, height: 210, requiresRotation: true }),
 });
 
+function freezeProfile(source) {
+  return Object.freeze({
+    ...source,
+    textDefaults: Object.freeze({ ...(source.textDefaults ?? {}) }),
+    rasterDefaults: Object.freeze({ ...(source.rasterDefaults ?? {}) }),
+  });
+}
+
+export const TOOL_PROFILES = Object.freeze({
+  fineliner: freezeProfile({
+    id: 'fineliner',
+    name: 'Линер',
+    shortName: 'Линер',
+    symbol: '╱',
+    description: 'Ровная тонкая линия для текста, схем и аккуратной графики.',
+    drawFeed: 1200,
+    travelFeed: 3600,
+    jogFeed: 600,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.10,
+    penUpDwell: 0.08,
+    strokeRepeats: 1,
+    allowReverse: true,
+    maxContinuousStroke: 260,
+    previewWidth: 0.42,
+    textDefaults: { preset: 'neat' },
+    rasterDefaults: { mode: 'hatch', threshold: 0.50, hatchSpacing: 1.35, hatchAngle: 0, contourStep: 2 },
+    note: 'Начальный универсальный профиль. Нажим задаётся пружиной держателя, а не программой.',
+  }),
+  gel: freezeProfile({
+    id: 'gel',
+    name: 'Гелевая ручка',
+    shortName: 'Гелевая',
+    symbol: '●',
+    description: 'Насыщенная линия; движения медленнее, подъём пера с небольшой выдержкой.',
+    drawFeed: 850,
+    travelFeed: 2800,
+    jogFeed: 500,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.16,
+    penUpDwell: 0.12,
+    strokeRepeats: 1,
+    allowReverse: true,
+    maxContinuousStroke: 220,
+    previewWidth: 0.58,
+    textDefaults: { preset: 'handwriting' },
+    rasterDefaults: { mode: 'hatch', threshold: 0.54, hatchSpacing: 1.65, hatchAngle: 0, contourStep: 2 },
+    note: 'Используйте гладкую бумагу и не завышайте нажим: гелевая паста размазывается при плотной штриховке.',
+  }),
+  ballpoint: freezeProfile({
+    id: 'ballpoint',
+    name: 'Шариковая ручка',
+    shortName: 'Шариковая',
+    symbol: '•',
+    description: 'Повседневная ручка, устойчивый универсальный режим с умеренным нажимом.',
+    drawFeed: 1050,
+    travelFeed: 3400,
+    jogFeed: 600,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.08,
+    penUpDwell: 0.06,
+    strokeRepeats: 1,
+    allowReverse: true,
+    maxContinuousStroke: 280,
+    previewWidth: 0.48,
+    textDefaults: { preset: 'handwriting' },
+    rasterDefaults: { mode: 'crosshatch', threshold: 0.48, hatchSpacing: 1.55, hatchAngle: 35, contourStep: 2 },
+    note: 'При пропусках сначала проверьте пружину и положение стержня, а не уменьшайте скорость до предела.',
+  }),
+  pencil: freezeProfile({
+    id: 'pencil',
+    name: 'Карандаш',
+    shortName: 'Карандаш',
+    symbol: '✎',
+    description: 'Мягкий ход, перекрёстная штриховка и возможность повторного прохода.',
+    drawFeed: 760,
+    travelFeed: 2700,
+    jogFeed: 450,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.05,
+    penUpDwell: 0.05,
+    strokeRepeats: 1,
+    allowReverse: true,
+    maxContinuousStroke: 300,
+    previewWidth: 0.50,
+    textDefaults: { preset: 'sketch' },
+    rasterDefaults: { mode: 'crosshatch', threshold: 0.42, hatchSpacing: 1.25, hatchAngle: 35, contourStep: 2 },
+    note: 'Для более тёмной линии используйте 2 прохода только после проверки повторяемости; чрезмерный нажим ломает грифель.',
+  }),
+  ink: freezeProfile({
+    id: 'ink',
+    name: 'Перо с тушью',
+    shortName: 'Перо',
+    symbol: '✒',
+    description: 'Медленное направленное письмо с выдержкой и ограничением длинных штрихов.',
+    drawFeed: 520,
+    travelFeed: 2100,
+    jogFeed: 350,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.24,
+    penUpDwell: 0.18,
+    strokeRepeats: 1,
+    allowReverse: false,
+    maxContinuousStroke: 120,
+    previewWidth: 0.62,
+    textDefaults: { preset: 'calligraphic' },
+    rasterDefaults: { mode: 'contour', threshold: 0.56, hatchSpacing: 2.25, hatchAngle: -18, contourStep: 2 },
+    note: 'Автоматического макания нет. Проверьте направление пера, запас туши и длинные непрерывные линии до запуска.',
+  }),
+  marker: freezeProfile({
+    id: 'marker',
+    name: 'Маркер / фломастер',
+    shortName: 'Маркер',
+    symbol: '▰',
+    description: 'Широкий пишущий узел: редкая штриховка, невысокая скорость и малый нажим.',
+    drawFeed: 650,
+    travelFeed: 2300,
+    jogFeed: 400,
+    penUp: 5,
+    penDown: 0,
+    penDownDwell: 0.14,
+    penUpDwell: 0.12,
+    strokeRepeats: 1,
+    allowReverse: true,
+    maxContinuousStroke: 220,
+    previewWidth: 0.90,
+    textDefaults: { preset: 'comic' },
+    rasterDefaults: { mode: 'comic', threshold: 0.52, hatchSpacing: 2.8, hatchAngle: 38, contourStep: 3 },
+    note: 'Плотные заливки заменяются редкими штрихами: повторный проход маркером быстро пропитывает бумагу.',
+  }),
+});
+
+export const TEXT_PRESETS = Object.freeze({
+  handwriting: Object.freeze({
+    id: 'handwriting', name: 'Живой почерк', description: 'Естественная строка с малой воспроизводимой вариативностью.',
+    fontSize: 6.8, widthScale: 0.94, letterSpacing: 0.20, wordSpacing: 2.8, lineHeight: 1.46,
+    lowercaseScale: 0.72, slant: 6, jitter: 0.18, heightJitter: 0.055, align: 'left',
+  }),
+  neat: Object.freeze({
+    id: 'neat', name: 'Аккуратная запись', description: 'Спокойный рукописный текст для записок и подписей.',
+    fontSize: 6.3, widthScale: 0.96, letterSpacing: 0.25, wordSpacing: 2.8, lineHeight: 1.42,
+    lowercaseScale: 0.72, slant: 3, jitter: 0.08, heightJitter: 0.025, align: 'left',
+  }),
+  technical: Object.freeze({
+    id: 'technical', name: 'Технический текст', description: 'Предсказуемые размеры без случайного смещения.',
+    fontSize: 5.6, widthScale: 1, letterSpacing: 0.34, wordSpacing: 2.6, lineHeight: 1.36,
+    lowercaseScale: 0.70, slant: 0, jitter: 0, heightJitter: 0, align: 'left',
+  }),
+  comic: Object.freeze({
+    id: 'comic', name: 'Комикс', description: 'Крупнее, плотнее и выразительнее для реплик и заголовков.',
+    fontSize: 7.4, widthScale: 1.06, letterSpacing: 0.46, wordSpacing: 3.2, lineHeight: 1.30,
+    lowercaseScale: 0.88, slant: -2, jitter: 0.09, heightJitter: 0.035, align: 'left',
+  }),
+  sketch: Object.freeze({
+    id: 'sketch', name: 'Карандашный эскиз', description: 'Небольшая неровность, пригодная для подписей к рисунку.',
+    fontSize: 6.6, widthScale: 0.95, letterSpacing: 0.18, wordSpacing: 2.7, lineHeight: 1.44,
+    lowercaseScale: 0.72, slant: 5, jitter: 0.22, heightJitter: 0.07, align: 'left',
+  }),
+  calligraphic: Object.freeze({
+    id: 'calligraphic', name: 'Перо', description: 'Направленные штрихи без разворота траекторий.',
+    fontSize: 7.1, widthScale: 0.98, letterSpacing: 0.34, wordSpacing: 3.0, lineHeight: 1.52,
+    lowercaseScale: 0.74, slant: 8, jitter: 0.04, heightJitter: 0.015, align: 'left',
+  }),
+});
+
+export const RASTER_PRESETS = Object.freeze({
+  hatch: Object.freeze({ id: 'hatch', name: 'Штриховка', description: 'Один слой параллельных линий для лёгких полутонов.' }),
+  crosshatch: Object.freeze({ id: 'crosshatch', name: 'Перекрёстная', description: 'Два слоя только в более тёмных областях.' }),
+  contour: Object.freeze({ id: 'contour', name: 'Контуры', description: 'Границы объектов без передачи полутонов.' }),
+  comic: Object.freeze({ id: 'comic', name: 'Комикс', description: 'Выразительный контур и разреженные теневые штрихи.' }),
+});
+
+export function getToolProfile(profileId = 'fineliner') {
+  const profile = TOOL_PROFILES[profileId] ?? TOOL_PROFILES.fineliner;
+  return {
+    ...profile,
+    textDefaults: { ...profile.textDefaults },
+    rasterDefaults: { ...profile.rasterDefaults },
+  };
+}
+
+export function getTextPreset(presetId = 'neat') {
+  return { ...(TEXT_PRESETS[presetId] ?? TEXT_PRESETS.neat) };
+}
+
+
 const EPSILON = 1e-9;
 
 function finiteNumber(value, fallback = 0) {
@@ -357,39 +548,112 @@ export function optimizePathOrder(paths, start = { x: 0, y: 0 }, allowReverse = 
 }
 
 function pixelDarkness(imageData, x, y) {
-  const index = (y * imageData.width + x) * 4;
+  const clampedX = Math.max(0, Math.min(imageData.width - 1, Math.round(x)));
+  const clampedY = Math.max(0, Math.min(imageData.height - 1, Math.round(y)));
+  const index = (clampedY * imageData.width + clampedX) * 4;
   const data = imageData.data;
   const alpha = (data[index + 3] ?? 255) / 255;
   const luminance = (0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2]) / 255;
   return (1 - luminance) * alpha;
 }
 
-export function rasterToHatchPaths(imageData, options = {}) {
-  if (!imageData?.data || !imageData.width || !imageData.height) return [];
+function clipLineToRectangle(origin, direction, width, height) {
+  let minimum = -Infinity;
+  let maximum = Infinity;
+  const axes = [
+    [origin.x, direction.x, 0, width],
+    [origin.y, direction.y, 0, height],
+  ];
+  for (const [position, delta, low, high] of axes) {
+    if (Math.abs(delta) < EPSILON) {
+      if (position < low || position > high) return null;
+      continue;
+    }
+    let first = (low - position) / delta;
+    let second = (high - position) / delta;
+    if (first > second) [first, second] = [second, first];
+    minimum = Math.max(minimum, first);
+    maximum = Math.min(maximum, second);
+    if (minimum > maximum) return null;
+  }
+  return [
+    { x: origin.x + direction.x * minimum, y: origin.y + direction.y * minimum },
+    { x: origin.x + direction.x * maximum, y: origin.y + direction.y * maximum },
+  ];
+}
+
+function hatchPass(imageData, options = {}) {
   const widthMm = Math.max(0.1, finiteNumber(options.widthMm, 100));
   const heightMm = Math.max(0.1, finiteNumber(options.heightMm, widthMm * imageData.height / imageData.width));
   const threshold = Math.max(0, Math.min(1, finiteNumber(options.threshold, 0.5)));
-  const rowSpacingMm = Math.max(0.1, finiteNumber(options.rowSpacingMm, 1));
+  const spacing = Math.max(0.1, finiteNumber(options.rowSpacingMm, 1));
   const invert = Boolean(options.invert);
-  const rowStep = Math.max(1, Math.round((rowSpacingMm / heightMm) * imageData.height));
+  const angle = finiteNumber(options.angleDeg, 0) * Math.PI / 180;
+  const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+  const normal = { x: -direction.y, y: direction.x };
+  const corners = [
+    { x: 0, y: 0 }, { x: widthMm, y: 0 }, { x: widthMm, y: heightMm }, { x: 0, y: heightMm },
+  ];
+  const projections = corners.map((point) => point.x * normal.x + point.y * normal.y);
+  const minProjection = Math.min(...projections);
+  const maxProjection = Math.max(...projections);
+  const pixelMm = Math.max(0.025, Math.min(
+    widthMm / Math.max(1, imageData.width - 1),
+    heightMm / Math.max(1, imageData.height - 1),
+  ));
+  const sampleStepMm = Math.max(pixelMm * 0.75, finiteNumber(options.sampleStepMm, pixelMm * 0.75));
   const paths = [];
-  for (let y = 0; y < imageData.height; y += rowStep) {
-    let segment = [];
-    const direction = Math.floor(y / rowStep) % 2 === 0 ? 1 : -1;
-    for (let offset = 0; offset < imageData.width; offset += 1) {
-      const x = direction > 0 ? offset : imageData.width - 1 - offset;
-      const darkness = invert ? 1 - pixelDarkness(imageData, x, y) : pixelDarkness(imageData, x, y);
-      const active = darkness >= threshold;
-      if (active) {
-        segment.push({ x: (x / Math.max(1, imageData.width - 1)) * widthMm, y: (y / Math.max(1, imageData.height - 1)) * heightMm });
-      } else if (segment.length) {
-        if (segment.length >= 2) paths.push([segment[0], segment[segment.length - 1]]);
-        segment = [];
+  let lineIndex = 0;
+
+  for (let projection = minProjection; projection <= maxProjection + EPSILON; projection += spacing) {
+    const origin = { x: normal.x * projection, y: normal.y * projection };
+    const clipped = clipLineToRectangle(origin, direction, widthMm, heightMm);
+    if (!clipped) continue;
+    let [start, end] = clipped;
+    if (lineIndex % 2 === 1) [start, end] = [end, start];
+    lineIndex += 1;
+    const length = distance(start, end);
+    const sampleCount = Math.max(1, Math.ceil(length / sampleStepMm));
+    let segmentStart = null;
+    let lastActive = null;
+    for (let index = 0; index <= sampleCount; index += 1) {
+      const ratio = index / sampleCount;
+      const point = {
+        x: start.x + (end.x - start.x) * ratio,
+        y: start.y + (end.y - start.y) * ratio,
+      };
+      const pixelX = point.x / widthMm * Math.max(1, imageData.width - 1);
+      const pixelY = point.y / heightMm * Math.max(1, imageData.height - 1);
+      const rawDarkness = pixelDarkness(imageData, pixelX, pixelY);
+      const darkness = invert ? 1 - rawDarkness : rawDarkness;
+      if (darkness >= threshold) {
+        if (!segmentStart) segmentStart = point;
+        lastActive = point;
+      } else if (segmentStart && lastActive) {
+        if (distance(segmentStart, lastActive) >= pixelMm) paths.push([segmentStart, lastActive]);
+        segmentStart = null;
+        lastActive = null;
       }
     }
-    if (segment.length >= 2) paths.push([segment[0], segment[segment.length - 1]]);
+    if (segmentStart && lastActive && distance(segmentStart, lastActive) >= pixelMm) paths.push([segmentStart, lastActive]);
   }
-  return cleanPaths(paths);
+  return paths;
+}
+
+export function rasterToHatchPaths(imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return [];
+  const primary = hatchPass(imageData, options);
+  if (!options.crossHatch) return cleanPaths(primary);
+  const threshold = Math.max(0, Math.min(1, finiteNumber(options.threshold, 0.5)));
+  const crossThreshold = Math.max(threshold, Math.min(1, finiteNumber(options.crossThreshold, threshold + 0.17)));
+  const angle = finiteNumber(options.angleDeg, 35);
+  const secondary = hatchPass(imageData, {
+    ...options,
+    threshold: crossThreshold,
+    angleDeg: finiteNumber(options.crossAngleDeg, -angle),
+    rowSpacingMm: Math.max(0.1, finiteNumber(options.crossSpacingMm, finiteNumber(options.rowSpacingMm, 1) * 1.12)),
+  });
+  return cleanPaths([...primary, ...secondary]);
 }
 
 function segmentKey(point, precision = 4) {
@@ -458,6 +722,37 @@ export function rasterToContourPaths(imageData, options = {}) {
   return simplifyPaths(joined, tolerance);
 }
 
+export function rasterToComicPaths(imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return [];
+  const threshold = Math.max(0.05, Math.min(0.95, finiteNumber(options.threshold, 0.5)));
+  const spacing = Math.max(0.2, finiteNumber(options.rowSpacingMm, 2.2));
+  const angle = finiteNumber(options.angleDeg, 38);
+  const outlines = rasterToContourPaths(imageData, {
+    ...options,
+    threshold: Math.max(0.12, threshold - 0.08),
+    sampleStepPx: Math.max(1, finiteNumber(options.sampleStepPx, 2)),
+  });
+  const shade = rasterToHatchPaths(imageData, {
+    ...options,
+    threshold,
+    rowSpacingMm: spacing,
+    angleDeg: angle,
+  });
+  const deepShade = rasterToHatchPaths(imageData, {
+    ...options,
+    threshold: Math.min(0.92, threshold + 0.22),
+    rowSpacingMm: spacing * 1.25,
+    angleDeg: -angle,
+  });
+  return cleanPaths([...outlines, ...shade, ...deepShade]);
+}
+
+function pathLength(path) {
+  let total = 0;
+  for (let index = 1; index < path.length; index += 1) total += distance(path[index - 1], path[index]);
+  return total;
+}
+
 function formatNumber(value, digits = 3) {
   const normalized = Math.abs(value) < 0.0005 ? 0 : value;
   const text = normalized.toFixed(digits);
@@ -472,42 +767,120 @@ function utf8Length(text) {
 
 export function estimateJob(paths, options = {}) {
   const drawFeed = Math.max(1, finiteNumber(options.drawFeed, 1200));
-  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 4000));
-  const penDwell = Math.max(0, finiteNumber(options.penDwell, 0.12));
-  const drawLength = calculateDrawLength(paths);
-  const travelLength = calculateTravelLength(paths, { x: 0, y: 0 });
-  const pathCount = cleanPaths(paths).length;
-  const seconds = drawLength / drawFeed * 60 + travelLength / travelFeed * 60 + pathCount * penDwell * 2;
-  return { drawLength, travelLength, seconds, pathCount, pointCount: cleanPaths(paths).reduce((sum, path) => sum + path.length, 0) };
+  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 3600));
+  const fallbackDwell = Math.max(0, finiteNumber(options.penDwell, 0.10));
+  const penDownDwell = Math.max(0, finiteNumber(options.penDownDwell, fallbackDwell));
+  const penUpDwell = Math.max(0, finiteNumber(options.penUpDwell, fallbackDwell));
+  const strokeRepeats = Math.max(1, Math.min(3, Math.round(finiteNumber(options.strokeRepeats, 1))));
+  const allowReverse = options.allowReverse !== false;
+  const clean = cleanPaths(paths);
+  const baseDrawLength = calculateDrawLength(clean);
+  const drawLength = baseDrawLength * strokeRepeats;
+  let travelLength = calculateTravelLength(clean, { x: 0, y: 0 });
+  if (!allowReverse && strokeRepeats > 1) {
+    travelLength += clean.reduce((sum, path) => sum + distance(path.at(-1), path[0]) * (strokeRepeats - 1), 0);
+  }
+  const pathCount = clean.length;
+  const penLifts = pathCount * (allowReverse ? 1 : strokeRepeats);
+  const seconds = drawLength / drawFeed * 60 + travelLength / travelFeed * 60 + penLifts * (penDownDwell + penUpDwell);
+  return {
+    drawLength,
+    baseDrawLength,
+    travelLength,
+    seconds,
+    pathCount,
+    penLifts,
+    pointCount: clean.reduce((sum, path) => sum + path.length, 0),
+    strokeRepeats,
+    allowReverse,
+    drawFeed,
+    travelFeed,
+  };
+}
+
+export function analyzeJob(paths, options = {}) {
+  const clean = cleanPaths(paths);
+  const estimate = estimateJob(clean, options);
+  const lengths = clean.map(pathLength);
+  const longestStroke = lengths.length ? Math.max(...lengths) : 0;
+  const shortStrokeCount = lengths.filter((value) => value < 0.45).length;
+  const maxContinuousStroke = Math.max(1, finiteNumber(options.maxContinuousStroke, 260));
+  const penUp = finiteNumber(options.penUp, 5);
+  const penDown = finiteNumber(options.penDown, 0);
+  const warnings = [];
+  const errors = [];
+
+  const machineFeedLimit = Math.max(100, finiteNumber(options.machineFeedLimit, 4200));
+  if (!clean.length) errors.push({ code: 'empty', message: 'Нет траекторий для выполнения.' });
+  if (penUp <= penDown) errors.push({ code: 'pen-range', message: 'Положение «перо вверх» должно быть выше положения «перо вниз».' });
+  if (estimate.drawFeed > machineFeedLimit || estimate.travelFeed > machineFeedLimit) errors.push({ code: 'feed-limit', message: `Подача превышает консервативный предел станка ${machineFeedLimit} мм/мин.` });
+  if (longestStroke > maxContinuousStroke) warnings.push({
+    code: 'continuous-stroke',
+    message: `Самый длинный непрерывный штрих ${longestStroke.toFixed(0)} мм; для выбранного инструмента рекомендуется не более ${maxContinuousStroke.toFixed(0)} мм.`,
+  });
+  if (estimate.pathCount > 3500) warnings.push({ code: 'many-lifts', message: `Задание содержит ${estimate.pathCount} подъёмов пера; выполнение и износ сервопривода заметно возрастут.` });
+  if (estimate.pointCount > 60000) warnings.push({ code: 'many-points', message: `Траектория содержит ${estimate.pointCount} точек. Увеличьте упрощение или шаг анализа.` });
+  if (estimate.seconds > 7200) warnings.push({ code: 'long-job', message: `Расчётное время превышает 2 часа. Разделите рисунок или разрядите штриховку.` });
+  if (shortStrokeCount > Math.max(250, estimate.pathCount * 0.45)) warnings.push({ code: 'short-strokes', message: 'Много очень коротких штрихов: серво будет работать чаще, чем оси рисования.' });
+  if (String(options.toolId) === 'ink' && estimate.pathCount > 1200) warnings.push({ code: 'ink-density', message: 'Для пера с тушью макет слишком дробный: предпочтительны контуры и длинные осмысленные штрихи.' });
+  if (String(options.toolId) === 'marker' && estimate.strokeRepeats > 1) warnings.push({ code: 'marker-repeat', message: 'Повторный проход маркером может пропитать и деформировать бумагу.' });
+  if (!estimate.allowReverse && estimate.strokeRepeats > 1) warnings.push({ code: 'directional-repeat', message: 'Для направленного пера каждый повтор выполняется вперёд: между проходами перо поднимается и возвращается к началу штриха.' });
+
+  return { ...estimate, longestStroke, shortStrokeCount, warnings, errors, valid: errors.length === 0 };
+}
+
+function machinePointForPage(point, page, invertY) {
+  return { x: point.x, y: invertY ? page.height - point.y : point.y };
 }
 
 export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
   const clean = cleanPaths(paths);
   const validation = validatePathsWithinPage(clean, page);
   const drawFeed = Math.max(1, finiteNumber(options.drawFeed, 1200));
-  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 4000));
+  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 3600));
   const penUp = finiteNumber(options.penUp, 5);
   const penDown = finiteNumber(options.penDown, 0);
-  const penDwell = Math.max(0, finiteNumber(options.penDwell, 0.12));
+  const fallbackDwell = Math.max(0, finiteNumber(options.penDwell, 0.10));
+  const penDownDwell = Math.max(0, finiteNumber(options.penDownDwell, fallbackDwell));
+  const penUpDwell = Math.max(0, finiteNumber(options.penUpDwell, fallbackDwell));
+  const strokeRepeats = Math.max(1, Math.min(3, Math.round(finiteNumber(options.strokeRepeats, 1))));
+  const allowReverse = options.allowReverse !== false;
   const invertY = options.invertY !== false;
   const returnHome = options.returnHome !== false;
-  const lines = ['; HandDraw ESP', 'G21', 'G90', `G0 Z${formatNumber(penUp)}`];
+  const toolName = String(options.toolName || options.toolId || 'универсальный инструмент').replace(/[\r\n]+/g, ' ');
+  const lines = [
+    '; HandDraw ESP',
+    `; Tool: ${toolName}`,
+    `; Paths: ${clean.length}`,
+    'G21',
+    'G90',
+    'G94',
+    `G0 Z${formatNumber(penUp)}`,
+  ];
+  if (penUpDwell > 0) lines.push(`G4 P${formatNumber(penUpDwell)}`);
   const ranges = [];
-  const machinePoint = (point) => ({ x: point.x, y: invertY ? page.height - point.y : point.y });
 
   for (const path of clean) {
     const startByte = utf8Length(`${lines.join('\n')}\n`);
-    const first = machinePoint(path[0]);
+    const machinePath = path.map((point) => machinePointForPage(point, page, invertY));
+    const first = machinePath[0];
     lines.push(`G0 Z${formatNumber(penUp)}`);
     lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
     lines.push(`G0 Z${formatNumber(penDown)}`);
-    if (penDwell > 0) lines.push(`G4 P${formatNumber(penDwell)}`);
-    for (let index = 1; index < path.length; index += 1) {
-      const point = machinePoint(path[index]);
-      lines.push(`G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(drawFeed, 0)}`);
+    if (penDownDwell > 0) lines.push(`G4 P${formatNumber(penDownDwell)}`);
+    for (let repeat = 0; repeat < strokeRepeats; repeat += 1) {
+      if (repeat > 0 && !allowReverse) {
+        lines.push(`G0 Z${formatNumber(penUp)}`);
+        if (penUpDwell > 0) lines.push(`G4 P${formatNumber(penUpDwell)}`);
+        lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
+        lines.push(`G0 Z${formatNumber(penDown)}`);
+        if (penDownDwell > 0) lines.push(`G4 P${formatNumber(penDownDwell)}`);
+      }
+      const points = allowReverse && repeat % 2 === 1 ? [...machinePath].reverse().slice(1) : machinePath.slice(1);
+      for (const point of points) lines.push(`G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(drawFeed, 0)}`);
     }
     lines.push(`G0 Z${formatNumber(penUp)}`);
-    if (penDwell > 0) lines.push(`G4 P${formatNumber(penDwell)}`);
+    if (penUpDwell > 0) lines.push(`G4 P${formatNumber(penUpDwell)}`);
     const endByte = utf8Length(`${lines.join('\n')}\n`);
     ranges.push({ startByte, endByte });
   }
@@ -520,5 +893,39 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
     startFraction: range.startByte / totalBytes,
     endFraction: range.endByte / totalBytes,
   }));
-  return { gcode, pathByteRanges, validation, estimate: estimateJob(clean, { drawFeed, travelFeed, penDwell }) };
+  const analysis = analyzeJob(clean, {
+    ...options,
+    drawFeed,
+    travelFeed,
+    penUp,
+    penDown,
+    penDownDwell,
+    penUpDwell,
+    strokeRepeats,
+  });
+  return { gcode, pathByteRanges, validation, estimate: analysis, analysis };
+}
+
+export function generateBoundaryGcode(bounds, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
+  const padding = Math.max(0, finiteNumber(options.padding, 2));
+  const source = bounds && Number.isFinite(bounds.width) ? bounds : { minX: 10, minY: 10, maxX: page.width - 10, maxY: page.height - 10 };
+  const minX = Math.max(0, finiteNumber(source.minX, 10) - padding);
+  const minY = Math.max(0, finiteNumber(source.minY, 10) - padding);
+  const maxX = Math.min(page.width, finiteNumber(source.maxX, page.width - 10) + padding);
+  const maxY = Math.min(page.height, finiteNumber(source.maxY, page.height - 10) + padding);
+  const penUp = finiteNumber(options.penUp, 5);
+  const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 2400));
+  const invertY = options.invertY !== false;
+  const rectangle = [
+    { x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }, { x: minX, y: minY },
+  ].map((point) => machinePointForPage(point, page, invertY));
+  const lines = [
+    '; HandDraw ESP boundary check — pen remains raised',
+    'G21', 'G90', 'G94', `G0 Z${formatNumber(penUp)}`,
+    `G0 X${formatNumber(rectangle[0].x)} Y${formatNumber(rectangle[0].y)} F${formatNumber(travelFeed, 0)}`,
+    ...rectangle.slice(1).map((point) => `G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(travelFeed, 0)}`),
+    `G0 X0 Y0 F${formatNumber(travelFeed, 0)}`,
+    'M2',
+  ];
+  return { gcode: `${lines.join('\n')}\n`, bounds: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY } };
 }
