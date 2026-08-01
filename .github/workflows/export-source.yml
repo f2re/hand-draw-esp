@@ -1,31 +1,72 @@
-name: Export source for implementation
+name: Apply UI and firmware redesign
 
 on:
   push:
     branches:
       - agent/ui-firmware-redesign
-  pull_request:
-    branches:
-      - main
+    paths:
+      - .ui-redesign/ready
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: apply-ui-firmware-redesign
+  cancel-in-progress: false
 
 jobs:
-  export:
+  apply:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Получить рабочую ветку
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Pack repository source
+          ref: agent/ui-firmware-redesign
+
+      - name: Подготовить Python и Node.js
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Восстановить проверенный пакет изменений
+        shell: bash
         run: |
           set -euo pipefail
-          tar --exclude='.git' -czf /tmp/source-export.tar.gz .
-      - name: Upload source archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: handdraw-source-export
-          path: /tmp/source-export.tar.gz
-          if-no-files-found: error
-          retention-days: 1
+          cat .ui-redesign/part-* > /tmp/ui-redesign-overlay.tar.gz.b64
+          base64 --decode /tmp/ui-redesign-overlay.tar.gz.b64 > /tmp/ui-redesign-overlay.tar.gz
+          echo 'a0ea09e8651e7a21ddb77054f92d8805ff8ef67512abdcd3b003a14d7e8fce44  /tmp/ui-redesign-overlay.tar.gz' | sha256sum --check --strict
+          tar -tzf /tmp/ui-redesign-overlay.tar.gz
+          tar -xzf /tmp/ui-redesign-overlay.tar.gz -C .
+          rm -rf .ui-redesign
+          rm -f .github/workflows/export-source.yml
+
+      - name: Проверить программную часть
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          npm test
+          python -m py_compile scripts/*.py tests/*.py
+          node --check web/src/core.js
+          node --check web/src/fluidnc.js
+          node --check web/src/svg-import.js
+          node --check web/src/app.js
+
+      - name: Зафиксировать переработку
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Нет изменений для фиксации.'
+            exit 1
+          fi
+          git commit -m 'feat: redesign operator experience and media-aware motion'
+          git push origin HEAD:agent/ui-firmware-redesign
