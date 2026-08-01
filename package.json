@@ -1,9 +1,9 @@
 {
   "name": "hand-draw-esp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Автономный веб-интерфейс и открытая конструкция A4-плоттера на ESP32/FluidNC",
+  "description": "Автономный A4-плоттер на ESP32/FluidNC с профилями пишущих инструментов и безопасным WebUI",
   "scripts": {
     "setup": "python3 scripts/setup_project.py",
     "build": "python3 scripts/materialize_sources.py && python3 scripts/build_webui.py",

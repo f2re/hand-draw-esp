@@ -3,136 +3,286 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f2f4f5">
+  <meta name="theme-color" content="#f1f0eb">
   <title>HandDraw ESP</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <p class="eyebrow">ESP32 · FluidNC · A4</p>
-      <h1>HandDraw ESP</h1>
+    <div class="brand-lockup">
+      <span class="brand-mark" aria-hidden="true">H</span>
+      <div>
+        <p class="eyebrow">Автономный плоттер · ESP32</p>
+        <h1>HandDraw</h1>
+        <p class="brand-caption">Подготовьте макет, выберите инструмент и запустите с проверкой.</p>
+      </div>
     </div>
-    <div class="connection-summary">
+    <div class="connection-summary" id="connectionSummary" role="status" aria-live="polite">
       <span id="connectionDot" class="status-dot" aria-hidden="true"></span>
-      <span id="connectionLabel">Локальный режим</span>
+      <span id="connectionLabel">Локальная подготовка</span>
     </div>
   </header>
 
   <main class="workspace">
-    <section class="control-column" aria-label="Параметры задания">
-      <nav class="panel-tabs" aria-label="Разделы">
-        <button type="button" class="panel-tab active" data-panel="layout">Макет</button>
-        <button type="button" class="panel-tab" data-panel="font">Шрифт</button>
-        <button type="button" class="panel-tab" data-panel="machine">Станок</button>
-        <button type="button" class="panel-tab" data-panel="help">Справка</button>
+    <section class="control-column" aria-label="Подготовка задания">
+      <nav class="panel-tabs" role="tablist" aria-label="Этапы работы">
+        <button id="tab-layout" type="button" class="panel-tab active" data-panel="layout" role="tab" aria-selected="true" aria-controls="panel-layout"><span>1</span> Макет</button>
+        <button id="tab-tool" type="button" class="panel-tab" data-panel="tool" role="tab" aria-selected="false" aria-controls="panel-tool" tabindex="-1"><span>2</span> Инструмент</button>
+        <button id="tab-machine" type="button" class="panel-tab" data-panel="machine" role="tab" aria-selected="false" aria-controls="panel-machine" tabindex="-1"><span>3</span> Станок</button>
+        <button id="tab-font" type="button" class="panel-tab secondary-tab" data-panel="font" role="tab" aria-selected="false" aria-controls="panel-font" tabindex="-1">Шрифт</button>
+        <button id="tab-help" type="button" class="panel-tab secondary-tab" data-panel="help" role="tab" aria-selected="false" aria-controls="panel-help" tabindex="-1">Справка</button>
       </nav>
 
-      <section class="panel active" data-panel-content="layout">
-        <div class="source-tabs" role="tablist" aria-label="Источник макета">
-          <button type="button" class="source-tab active" data-source="text">Текст</button>
-          <button type="button" class="source-tab" data-source="svg">SVG</button>
-          <button type="button" class="source-tab" data-source="image">Изображение</button>
-        </div>
-
-        <div class="source-section active" data-source-content="text">
-          <label class="field field-wide">
-            <span>Текст</span>
-            <textarea id="textInput" rows="7" spellcheck="false">МЕТЕОСТАНЦИЯ № 12
-ТЕМПЕРАТУРА +18 °C</textarea>
-          </label>
-          <label class="field field-wide">
-            <span>Шрифт</span>
-            <select id="fontSelect"></select>
-          </label>
-          <div class="form-grid">
-            <label class="field"><span>Высота, мм</span><input id="fontSize" type="number" min="1" max="40" step="0.1" value="8"></label>
-            <label class="field"><span>Ширина</span><input id="widthScale" type="number" min="0.4" max="2" step="0.05" value="1"></label>
-            <label class="field"><span>Межбуквенный, мм</span><input id="letterSpacing" type="number" min="-1" max="10" step="0.1" value="0.5"></label>
-            <label class="field"><span>Межсловный, мм</span><input id="wordSpacing" type="number" min="0" max="30" step="0.1" value="3"></label>
-            <label class="field"><span>Межстрочный</span><input id="lineHeight" type="number" min="0.8" max="3" step="0.05" value="1.35"></label>
-            <label class="field"><span>Строчные, %</span><input id="lowercaseScale" type="number" min="35" max="100" step="1" value="70"></label>
-            <label class="field"><span>Наклон, °</span><input id="slant" type="number" min="-30" max="30" step="1" value="0"></label>
-            <label class="field"><span>Зерно</span><input id="seed" type="number" min="0" max="999999" step="1" value="17"></label>
+      <section id="panel-layout" class="panel active" data-panel-content="layout" role="tabpanel" aria-labelledby="tab-layout">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Шаг 1</p>
+            <h2>Что рисуем</h2>
           </div>
+          <p>Предпросмотр и G-code строятся из одной траектории.</p>
         </div>
 
-        <div class="source-section" data-source-content="svg">
+        <div class="source-tabs" role="tablist" aria-label="Источник макета">
+          <button id="source-tab-text" type="button" class="source-tab active" data-source="text" role="tab" aria-selected="true" aria-controls="source-panel-text">Текст</button>
+          <button id="source-tab-svg" type="button" class="source-tab" data-source="svg" role="tab" aria-selected="false" aria-controls="source-panel-svg" tabindex="-1">SVG</button>
+          <button id="source-tab-image" type="button" class="source-tab" data-source="image" role="tab" aria-selected="false" aria-controls="source-panel-image" tabindex="-1">Рисунок</button>
+        </div>
+
+        <div id="source-panel-text" class="source-section active" data-source-content="text" role="tabpanel" aria-labelledby="source-tab-text">
+          <div class="section-label-row">
+            <div>
+              <h3>Характер текста</h3>
+              <p id="textPresetSummary" class="hint">Аккуратная запись с небольшой естественной вариативностью.</p>
+            </div>
+          </div>
+          <div id="textPresetList" class="preset-strip" role="radiogroup" aria-label="Стиль текста"></div>
+
+          <label class="field field-wide text-editor-field">
+            <span>Текст</span>
+            <textarea id="textInput" rows="8" spellcheck="true" data-regenerate>МЕТЕОСТАНЦИЯ № 12
+Температура +18 °C</textarea>
+          </label>
+
+          <div class="form-grid key-controls">
+            <label class="field field-wide">
+              <span>Шрифт</span>
+              <select id="fontSelect" data-regenerate></select>
+            </label>
+            <label class="field"><span>Высота букв, мм</span><input id="fontSize" type="number" min="1" max="40" step="0.1" value="6.3" data-regenerate></label>
+            <label class="field"><span>Выравнивание</span>
+              <select id="textAlign" data-regenerate>
+                <option value="left">По левому краю</option>
+                <option value="center">По центру</option>
+                <option value="right">По правому краю</option>
+              </select>
+            </label>
+          </div>
+
+          <details class="advanced-section">
+            <summary>Точная настройка почерка</summary>
+            <div class="form-grid">
+              <label class="field"><span>Ширина</span><input id="widthScale" type="number" min="0.4" max="2" step="0.01" value="0.96" data-regenerate></label>
+              <label class="field"><span>Межбуквенный, мм</span><input id="letterSpacing" type="number" min="-1" max="10" step="0.05" value="0.25" data-regenerate></label>
+              <label class="field"><span>Межсловный, мм</span><input id="wordSpacing" type="number" min="0" max="30" step="0.1" value="2.8" data-regenerate></label>
+              <label class="field"><span>Межстрочный</span><input id="lineHeight" type="number" min="0.8" max="3" step="0.01" value="1.42" data-regenerate></label>
+              <label class="field"><span>Строчные, %</span><input id="lowercaseScale" type="number" min="35" max="100" step="1" value="72" data-regenerate></label>
+              <label class="field"><span>Наклон, °</span><input id="slant" type="number" min="-30" max="30" step="1" value="3" data-regenerate></label>
+              <label class="field"><span>Неровность, мм</span><input id="textJitter" type="number" min="0" max="1" step="0.01" value="0.08" data-regenerate></label>
+              <label class="field"><span>Разброс высоты</span><input id="heightJitter" type="number" min="0" max="0.3" step="0.005" value="0.025" data-regenerate></label>
+              <label class="field"><span>Вариант начертания</span><input id="seed" type="number" min="0" max="999999" step="1" value="17" data-regenerate></label>
+            </div>
+          </details>
+        </div>
+
+        <div id="source-panel-svg" class="source-section" data-source-content="svg" role="tabpanel" aria-labelledby="source-tab-svg" hidden>
           <label class="drop-field">
-            <span>SVG-файл</span>
+            <span class="drop-title">Выберите SVG</span>
+            <span class="hint">Линии и кривые останутся векторными. Текст заранее преобразуйте в контуры.</span>
             <input id="svgFile" type="file" accept="image/svg+xml,.svg">
           </label>
           <div class="form-grid">
-            <label class="field"><span>Шаг кривой</span><input id="svgSampleStep" type="number" min="0.05" max="10" step="0.05" value="0.4"></label>
-            <label class="field"><span>Упрощение</span><input id="svgTolerance" type="number" min="0" max="5" step="0.05" value="0.08"></label>
+            <label class="field"><span>Точность кривой, мм</span><input id="svgSampleStep" type="number" min="0.05" max="10" step="0.05" value="0.4" data-regenerate></label>
+            <label class="field"><span>Упрощение, мм</span><input id="svgTolerance" type="number" min="0" max="5" step="0.05" value="0.08" data-regenerate></label>
           </div>
-          <p id="svgInfo" class="hint">Выберите файл. Текст внутри SVG следует преобразовать в кривые.</p>
+          <p id="svgInfo" class="hint">Файл не выбран.</p>
         </div>
 
-        <div class="source-section" data-source-content="image">
+        <div id="source-panel-image" class="source-section" data-source-content="image" role="tabpanel" aria-labelledby="source-tab-image" hidden>
           <label class="drop-field">
-            <span>PNG, JPEG или WebP</span>
+            <span class="drop-title">Выберите PNG, JPEG или WebP</span>
+            <span class="hint">Файл обрабатывается в браузере и не отправляется во внешние сервисы.</span>
             <input id="imageFile" type="file" accept="image/png,image/jpeg,image/webp">
           </label>
-          <div class="segmented-control" aria-label="Способ преобразования">
-            <label><input type="radio" name="rasterMode" value="hatch" checked><span>Штриховка</span></label>
-            <label><input type="radio" name="rasterMode" value="contour"><span>Контуры</span></label>
+
+          <div class="section-label-row">
+            <div><h3>Способ рисования</h3><p class="hint">Для туши предпочтительны контуры, для карандаша — перекрёстная штриховка.</p></div>
           </div>
+          <div class="raster-mode-grid" role="radiogroup" aria-label="Способ преобразования рисунка">
+            <label><input type="radio" name="rasterMode" value="hatch" checked><span><strong>Штриховка</strong><small>Один слой полутонов</small></span></label>
+            <label><input type="radio" name="rasterMode" value="crosshatch"><span><strong>Перекрёстная</strong><small>Глубокие тени</small></span></label>
+            <label><input type="radio" name="rasterMode" value="contour"><span><strong>Контуры</strong><small>Логотипы и линейная графика</small></span></label>
+            <label><input type="radio" name="rasterMode" value="comic"><span><strong>Комикс</strong><small>Контур и разреженные тени</small></span></label>
+          </div>
+
           <div class="form-grid">
-            <label class="field"><span>Порог</span><input id="imageThreshold" type="range" min="0.05" max="0.95" step="0.01" value="0.5"></label>
-            <label class="field"><span>Шаг штрихов, мм</span><input id="hatchSpacing" type="number" min="0.2" max="8" step="0.1" value="1.4"></label>
-            <label class="field"><span>Шаг контура, пикс.</span><input id="contourStep" type="number" min="1" max="8" step="1" value="2"></label>
-            <label class="field checkbox-field"><input id="imageInvert" type="checkbox"><span>Инвертировать</span></label>
+            <label class="field range-field"><span>Порог темноты <output id="thresholdValue">50%</output></span><input id="imageThreshold" type="range" min="0.05" max="0.95" step="0.01" value="0.5" data-regenerate></label>
+            <label class="field"><span>Шаг штрихов, мм</span><input id="hatchSpacing" type="number" min="0.2" max="8" step="0.05" value="1.35" data-regenerate></label>
+            <label class="field"><span>Угол штриховки, °</span><input id="hatchAngle" type="number" min="-90" max="90" step="1" value="0" data-regenerate></label>
+            <label class="field"><span>Шаг контура, пикс.</span><input id="contourStep" type="number" min="1" max="8" step="1" value="2" data-regenerate></label>
+            <label class="field toggle-field"><input id="imageInvert" type="checkbox" data-regenerate><span>Инвертировать свет и тень</span></label>
           </div>
           <canvas id="imageCanvas" width="1" height="1" hidden></canvas>
-          <p id="imageInfo" class="hint">Изображение обрабатывается только в браузере.</p>
+          <p id="imageInfo" class="hint">Файл не выбран.</p>
         </div>
 
-        <details open>
+        <details class="advanced-section" open>
           <summary>Лист и поля</summary>
           <div class="form-grid">
             <label class="field field-wide"><span>Формат</span>
-              <select id="pagePreset">
+              <select id="pagePreset" data-regenerate>
                 <option value="A4_PORTRAIT">A4 · книжная</option>
-                <option value="A4_LANDSCAPE">A4 · альбомная, с программным поворотом</option>
+                <option value="A4_LANDSCAPE">A4 · альбомная, автоматически повернуть</option>
               </select>
             </label>
-            <label class="field"><span>Слева, мм</span><input id="marginLeft" type="number" min="0" max="60" step="0.5" value="10"></label>
-            <label class="field"><span>Справа, мм</span><input id="marginRight" type="number" min="0" max="60" step="0.5" value="10"></label>
-            <label class="field"><span>Сверху, мм</span><input id="marginTop" type="number" min="0" max="60" step="0.5" value="10"></label>
-            <label class="field"><span>Снизу, мм</span><input id="marginBottom" type="number" min="0" max="60" step="0.5" value="10"></label>
-            <label class="field checkbox-field"><input id="optimizePaths" type="checkbox" checked><span>Сократить холостой ход</span></label>
-            <label class="field checkbox-field"><input id="showTravel" type="checkbox"><span>Показать переходы</span></label>
-          </div>
-        </details>
-
-        <details>
-          <summary>Параметры G-code</summary>
-          <div class="form-grid">
-            <label class="field"><span>Рисование, мм/мин</span><input id="drawFeed" type="number" min="50" max="6000" step="50" value="1200"></label>
-            <label class="field"><span>Переход, мм/мин</span><input id="travelFeed" type="number" min="100" max="8000" step="50" value="4000"></label>
-            <label class="field"><span>Перо вверх Z</span><input id="penUp" type="number" min="0" max="5" step="0.1" value="5"></label>
-            <label class="field"><span>Перо вниз Z</span><input id="penDown" type="number" min="0" max="5" step="0.1" value="0"></label>
-            <label class="field"><span>Пауза пера, с</span><input id="penDwell" type="number" min="0" max="3" step="0.01" value="0.12"></label>
-            <label class="field field-wide"><span>Имя задания</span><input id="jobName" type="text" value="handdraw-job.gcode"></label>
+            <label class="field"><span>Слева, мм</span><input id="marginLeft" type="number" min="0" max="60" step="0.5" value="10" data-regenerate></label>
+            <label class="field"><span>Справа, мм</span><input id="marginRight" type="number" min="0" max="60" step="0.5" value="10" data-regenerate></label>
+            <label class="field"><span>Сверху, мм</span><input id="marginTop" type="number" min="0" max="60" step="0.5" value="10" data-regenerate></label>
+            <label class="field"><span>Снизу, мм</span><input id="marginBottom" type="number" min="0" max="60" step="0.5" value="10" data-regenerate></label>
+            <label class="field toggle-field"><input id="optimizePaths" type="checkbox" checked data-regenerate><span>Сократить холостой ход</span></label>
+            <label class="field toggle-field"><input id="showTravel" type="checkbox"><span>Показать переходы</span></label>
           </div>
         </details>
 
         <div class="primary-actions">
-          <button id="generateButton" type="button" class="button primary">Сформировать</button>
+          <button id="generateButton" type="button" class="button primary">Обновить макет</button>
           <button id="downloadGcodeButton" type="button" class="button">Скачать G-code</button>
         </div>
+        <p class="autosave-note">Изменения пересчитываются автоматически и сохраняются на этом устройстве.</p>
       </section>
 
-      <section class="panel" data-panel-content="font">
+      <section id="panel-tool" class="panel" data-panel-content="tool" role="tabpanel" aria-labelledby="tab-tool" hidden>
+        <div class="panel-heading">
+          <div><p class="eyebrow">Шаг 2</p><h2>Чем рисуем</h2></div>
+          <p>Профиль меняет скорость, выдержки и плотность. Физический нажим задаёт пружина.</p>
+        </div>
+
+        <div id="toolProfileList" class="tool-rack" role="radiogroup" aria-label="Пишущий инструмент"></div>
+        <section class="tool-profile-summary" aria-live="polite">
+          <div class="tool-profile-title"><span id="toolProfileSymbol" aria-hidden="true">╱</span><div><strong id="toolProfileName">Линер</strong><p id="toolProfileDescription">Ровная тонкая линия.</p></div></div>
+          <dl class="profile-metrics">
+            <div><dt>Рисование</dt><dd id="profileDrawFeed">1200 мм/мин</dd></div>
+            <div><dt>Переход</dt><dd id="profileTravelFeed">3600 мм/мин</dd></div>
+            <div><dt>Выдержка</dt><dd id="profileDwell">0,10 / 0,08 с</dd></div>
+          </dl>
+          <p id="toolProfileNote" class="profile-note"></p>
+        </section>
+
+        <details class="advanced-section">
+          <summary>Настройка движения</summary>
+          <p class="hint">Начните с профиля. Меняйте значения только после теста пера и короткого образца.</p>
+          <div class="form-grid">
+            <label class="field"><span>Рисование, мм/мин</span><input id="drawFeed" type="number" min="50" max="4200" step="25" value="1200" data-regenerate></label>
+            <label class="field"><span>Переход, мм/мин</span><input id="travelFeed" type="number" min="100" max="4200" step="50" value="3600" data-regenerate></label>
+            <label class="field"><span>Перо вверх Z</span><input id="penUp" type="number" min="0" max="5" step="0.1" value="5" data-regenerate></label>
+            <label class="field"><span>Перо вниз Z</span><input id="penDown" type="number" min="0" max="5" step="0.1" value="0" data-regenerate></label>
+            <label class="field"><span>После опускания, с</span><input id="penDownDwell" type="number" min="0" max="3" step="0.01" value="0.10" data-regenerate></label>
+            <label class="field"><span>После подъёма, с</span><input id="penUpDwell" type="number" min="0" max="3" step="0.01" value="0.08" data-regenerate></label>
+            <label class="field"><span>Проходов по линии</span><input id="strokeRepeats" type="number" min="1" max="3" step="1" value="1" data-regenerate></label>
+            <label class="field toggle-field"><input id="returnHome" type="checkbox" checked data-regenerate><span>Вернуться в ноль после задания</span></label>
+            <label class="field field-wide"><span>Имя задания</span><input id="jobName" type="text" value="handdraw-job.gcode"></label>
+          </div>
+        </details>
+
+        <div class="calibration-callout">
+          <strong>Важно</strong>
+          <p>Профиль не управляет силой нажима. Подберите пружину так, чтобы линия была непрерывной без прогиба балки и продавливания бумаги.</p>
+        </div>
+
+        <button type="button" class="button primary next-step" data-go-panel="machine">Перейти к проверке станка</button>
+      </section>
+
+      <section id="panel-machine" class="panel" data-panel-content="machine" role="tabpanel" aria-labelledby="tab-machine" hidden>
+        <div class="panel-heading">
+          <div><p class="eyebrow">Шаг 3</p><h2>Проверка и запуск</h2></div>
+          <p id="startHint">Подключите станок и выполните пункты по порядку.</p>
+        </div>
+
+        <section class="connection-block">
+          <div>
+            <strong id="machineConnectionTitle">FluidNC не подключён</strong>
+            <p id="machineConnectionHint">При открытии страницы с ESP32 подключение выполняется автоматически.</p>
+          </div>
+          <div class="connection-buttons">
+            <button id="connectButton" type="button" class="button primary">Подключить</button>
+            <button id="disconnectButton" type="button" class="button subtle">Отключить</button>
+          </div>
+        </section>
+
+        <div class="machine-status-grid">
+          <div><span>Состояние</span><strong id="machineState">—</strong></div>
+          <div><span>Координаты</span><strong id="machineCoordinates">0,0 · 0,0 · 0,0</strong></div>
+          <div><span>Подача</span><strong id="machineFeed">0</strong></div>
+          <div><span>Задание</span><strong id="machineProgress">0%</strong></div>
+          <span id="machineX" hidden>0,000</span><span id="machineY" hidden>0,000</span><span id="machineZ" hidden>0,000</span>
+        </div>
+
+        <ol class="readiness-list" aria-label="Подготовка к запуску">
+          <li id="readyLayout" class="ready-item"><span class="ready-icon" aria-hidden="true">1</span><div><strong>Макет внутри листа</strong><small>Проверяется автоматически.</small></div></li>
+          <li id="readyConnected" class="ready-item"><span class="ready-icon" aria-hidden="true">2</span><div><strong>Контроллер подключён</strong><small>Wi‑Fi и WebSocket FluidNC.</small></div></li>
+          <li id="readyHomed" class="ready-item"><span class="ready-icon" aria-hidden="true">3</span><div><strong>Выполнен homing</strong><small>Ноль осей установлен в текущем сеансе.</small></div><button id="homeButton" type="button" class="button small">Выполнить</button></li>
+          <li id="readyPen" class="ready-item"><span class="ready-icon" aria-hidden="true">4</span><div><strong>Проверен подъём пера</strong><small>Без механического упора и нагрева.</small></div><button id="penTestButton" type="button" class="button small">Тест</button></li>
+          <li class="confirmation-row"><label><input id="confirmPenTest" type="checkbox" disabled><span>Перо полностью отрывается и свободно опускается</span></label></li>
+          <li id="readyPaper" class="ready-item"><span class="ready-icon" aria-hidden="true">5</span><div><strong>Лист закреплён</strong><small>Зажимы не входят в траекторию.</small></div></li>
+          <li class="confirmation-row"><label><input id="confirmPaper" type="checkbox"><span>Лист и свободное пространство проверены</span></label></li>
+          <li id="readyBoundary" class="ready-item"><span class="ready-icon" aria-hidden="true">6</span><div><strong>Проверена рамка</strong><small>Станок обходит габарит с поднятым пером.</small></div><button id="dryRunButton" type="button" class="button small">Обвести</button></li>
+          <li class="confirmation-row"><label><input id="confirmBoundary" type="checkbox" disabled><span>Рамка проходит над листом без столкновений</span></label></li>
+          <li id="readyUploaded" class="ready-item"><span class="ready-icon" aria-hidden="true">7</span><div><strong>Задание записано на SD</strong><small>После записи файл читается обратно и проверяется.</small></div><button id="uploadButton" type="button" class="button small">Передать</button></li>
+        </ol>
+
+        <div class="launch-area">
+          <button id="startButton" type="button" class="button launch" disabled>Запустить рисование</button>
+          <div class="run-controls">
+            <button id="pauseButton" type="button" class="button" disabled>Пауза</button>
+            <button id="resumeButton" type="button" class="button" disabled>Продолжить</button>
+            <button id="stopButton" type="button" class="button danger" disabled>Стоп</button>
+          </div>
+          <p class="safety-line">Аппаратное отключение 12 В должно оставаться доступным. Программный стоп зависит от контроллера и Wi‑Fi.</p>
+        </div>
+
+        <details class="advanced-section machine-service">
+          <summary>Ручное управление и диагностика</summary>
+          <div class="form-grid">
+            <label class="field field-wide"><span>Адрес контроллера</span><input id="controllerAddress" type="text" placeholder="оставьте пустым при открытии с ESP32"></label>
+            <label class="field"><span>Шаг перемещения</span>
+              <select id="jogDistance"><option value="1">1 мм</option><option value="5" selected>5 мм</option><option value="10">10 мм</option></select>
+            </label>
+            <label class="field"><span>Скорость jog</span><input id="jogFeed" type="number" min="100" max="1200" step="50" value="600"></label>
+          </div>
+          <div class="jog-pad" aria-label="Ручное перемещение">
+            <span></span><button type="button" class="button" data-jog-axis="Y" data-jog-sign="1" aria-label="Y плюс">Y+</button><span></span>
+            <button type="button" class="button" data-jog-axis="X" data-jog-sign="-1" aria-label="X минус">X−</button>
+            <button id="penUpButton" type="button" class="button">Перо ↑</button>
+            <button type="button" class="button" data-jog-axis="X" data-jog-sign="1" aria-label="X плюс">X+</button>
+            <span></span><button type="button" class="button" data-jog-axis="Y" data-jog-sign="-1" aria-label="Y минус">Y−</button><span></span>
+          </div>
+          <div class="secondary-actions">
+            <button id="penDownButton" type="button" class="button">Перо вниз</button>
+            <button id="unlockButton" type="button" class="button">Снять Alarm</button>
+          </div>
+          <pre id="machineLog" class="machine-log" aria-live="polite"></pre>
+        </details>
+      </section>
+
+      <section id="panel-font" class="panel" data-panel-content="font" role="tabpanel" aria-labelledby="tab-font" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">Мастерская</p><h2>Собственный почерк</h2></div><p>Каждый жест становится отдельным штрихом.</p></div>
         <div class="form-grid">
           <label class="field field-wide"><span>Название</span><input id="fontName" type="text" value="Мой почерк"></label>
           <label class="field field-wide"><span>Автор</span><input id="fontAuthor" type="text" value=""></label>
           <label class="field field-wide"><span>Лицензия</span><input id="fontLicense" type="text" value="CC BY 4.0"></label>
           <label class="field"><span>Знак</span><input id="glyphCharacter" type="text" maxlength="2" value="А"></label>
-          <label class="field"><span>Ширина</span><input id="glyphAdvance" type="number" min="0.2" max="2" step="0.05" value="0.82"></label>
+          <label class="field"><span>Ширина знака</span><input id="glyphAdvance" type="number" min="0.2" max="2" step="0.05" value="0.82"></label>
         </div>
-        <p class="hint">Рисуйте мышью или стилусом. Каждый новый жест становится отдельным штрихом.</p>
+        <p class="hint">Рисуйте мышью или стилусом внутри сетки.</p>
         <canvas id="glyphBoard" width="520" height="420" aria-label="Поле рисования знака"></canvas>
         <div class="secondary-actions">
           <button id="glyphUndo" type="button" class="button">Отменить штрих</button>
@@ -144,70 +294,39 @@
           <button id="fontExport" type="button" class="button">Экспорт JSON</button>
           <label class="button file-button">Импорт JSON<input id="fontImport" type="file" accept="application/json,.json" hidden></label>
         </div>
-        <p id="fontMessage" class="hint">Встроенный шрифт будет использован как основа; сохранённые знаки заменят его варианты.</p>
+        <p id="fontMessage" class="hint">Сохранённые знаки заменят соответствующие знаки встроенного шрифта.</p>
       </section>
 
-      <section class="panel" data-panel-content="machine">
-        <label class="field field-wide"><span>Адрес контроллера</span><input id="controllerAddress" type="text" placeholder="handdraw.local или 192.168.1.50"></label>
-        <div class="primary-actions">
-          <button id="connectButton" type="button" class="button primary">Подключиться</button>
-          <button id="disconnectButton" type="button" class="button">Отключиться</button>
-        </div>
-        <div class="machine-status-grid">
-          <div><span>Состояние</span><strong id="machineState">—</strong></div>
-          <div><span>X</span><strong id="machineX">0,000</strong></div>
-          <div><span>Y</span><strong id="machineY">0,000</strong></div>
-          <div><span>Z</span><strong id="machineZ">0,000</strong></div>
-          <div><span>Подача</span><strong id="machineFeed">0</strong></div>
-          <div><span>Задание</span><strong id="machineProgress">0%</strong></div>
-        </div>
-        <div class="machine-actions">
-          <button id="homeButton" type="button" class="button">Homing</button>
-          <button id="penUpButton" type="button" class="button">Перо вверх</button>
-          <button id="penDownButton" type="button" class="button">Перо вниз</button>
-          <button id="uploadButton" type="button" class="button primary">Передать на SD</button>
-          <button id="startButton" type="button" class="button primary">Запустить</button>
-          <button id="pauseButton" type="button" class="button">Пауза</button>
-          <button id="resumeButton" type="button" class="button">Продолжить</button>
-          <button id="stopButton" type="button" class="button danger">Стоп</button>
-        </div>
-        <div class="jog-grid" aria-label="Ручное перемещение">
-          <button type="button" class="button" data-jog-axis="Y" data-jog-distance="5">Y +5</button>
-          <button type="button" class="button" data-jog-axis="X" data-jog-distance="-5">X −5</button>
-          <button type="button" class="button" data-jog-axis="X" data-jog-distance="5">X +5</button>
-          <button type="button" class="button" data-jog-axis="Y" data-jog-distance="-5">Y −5</button>
-        </div>
-        <pre id="machineLog" class="machine-log" aria-live="polite"></pre>
-        <p class="warning">Программный «Стоп» не заменяет аппаратное снятие 12 В.</p>
-      </section>
-
-      <section class="panel prose" data-panel-content="help">
-        <h2>Рабочий порядок</h2>
+      <section id="panel-help" class="panel prose" data-panel-content="help" role="tabpanel" aria-labelledby="tab-help" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">Справка</p><h2>Как устроена работа</h2></div></div>
+        <h3>Где создаётся G-code</h3>
+        <p>Интерфейс хранится на ESP32, но геометрию рассчитывает браузер телефона или компьютера. Это разгружает контроллер: FluidNC занимается движением, homing, границами и выполнением файла с SD-карты. Интернет не нужен.</p>
+        <h3>Рабочий порядок</h3>
         <ol>
-          <li>Выполните homing и проверьте положение листа.</li>
-          <li>Выберите источник макета и сформируйте траектории.</li>
-          <li>Убедитесь, что сообщение о границах зелёное.</li>
-          <li>Запустите локальную симуляцию.</li>
-          <li>Передайте G-code на SD-карту.</li>
-          <li>Первый проход выполняйте с поднятым пером.</li>
-          <li>После проверки запустите рисование под наблюдением.</li>
+          <li>Сформируйте макет и устраните предупреждения.</li>
+          <li>Выберите реальный пишущий инструмент.</li>
+          <li>Подключите FluidNC и выполните homing.</li>
+          <li>Проверьте перо и обводку рамки.</li>
+          <li>Передайте задание и запустите под наблюдением.</li>
         </ol>
-        <h2>Ограничения</h2>
-        <p>TTF/OTF не являются однолинейными. SVG-текст следует преобразовать в кривые. Растровые полутона воспроизводятся штриховкой, а не краской переменной плотности.</p>
+        <h3>Перо с тушью</h3>
+        <p>Система управляет скоростью и временем контакта, но не умеет автоматически макать перо. Используйте короткие задания, контурный режим и следите за направлением пера.</p>
       </section>
     </section>
 
     <section class="preview-column" aria-label="Предпросмотр">
       <div class="preview-toolbar">
-        <div>
-          <p class="eyebrow">Предпросмотр задания</p>
+        <div class="preview-status">
+          <p class="eyebrow">Лист A4</p>
           <p id="validationMessage" class="validation neutral">Формирование макета…</p>
         </div>
-        <div class="secondary-actions compact">
-          <button id="simulateButton" type="button" class="button">Ход</button>
-          <button id="resetSimulationButton" type="button" class="button">Сброс</button>
+        <div class="preview-actions">
+          <span id="previewToolBadge" class="tool-badge">╱ Линер</span>
+          <button id="simulateButton" type="button" class="button compact">Показать ход</button>
+          <button id="resetSimulationButton" type="button" class="button compact">Сброс</button>
         </div>
       </div>
+      <div id="jobAdvice" class="job-advice" aria-live="polite"></div>
       <div id="pageViewport" class="page-viewport">
         <svg id="pagePreview" viewBox="0 0 210 297" role="img" aria-label="Лист с траекториями">
           <rect id="paperRect" x="0" y="0" width="210" height="297" rx="1"></rect>
@@ -221,13 +340,28 @@
         <div><span>Штрихов</span><strong id="statPaths">0</strong></div>
         <div><span>Точек</span><strong id="statPoints">0</strong></div>
         <div><span>Линия</span><strong id="statDraw">0 мм</strong></div>
-        <div><span>Холостой ход</span><strong id="statTravel">0 мм</strong></div>
+        <div><span>Переходы</span><strong id="statTravel">0 мм</strong></div>
+        <div><span>Подъёмов</span><strong id="statLifts">0</strong></div>
+        <div><span>Длинный штрих</span><strong id="statLongest">0 мм</strong></div>
         <div><span>Оценка</span><strong id="statTime">0:00</strong></div>
         <div><span>Габарит</span><strong id="statBounds">0 × 0 мм</strong></div>
       </div>
       <div class="progress-track" aria-label="Ход задания"><span id="jobProgressBar"></span></div>
     </section>
   </main>
+
+  <dialog id="startDialog" class="start-dialog">
+    <form method="dialog">
+      <p class="eyebrow">Последняя проверка</p>
+      <h2>Запустить рисование?</h2>
+      <div id="startDialogSummary" class="dialog-summary"></div>
+      <label class="supervision-confirm"><input id="confirmSupervision" type="checkbox"><span>Я нахожусь рядом со станком, аппаратное питание можно отключить немедленно.</span></label>
+      <div class="primary-actions">
+        <button id="cancelStartButton" type="button" class="button">Отмена</button>
+        <button id="confirmStartButton" type="button" class="button launch" disabled>Начать</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="./app.js"></script>
 </body>
