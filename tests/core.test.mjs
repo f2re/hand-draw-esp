@@ -148,8 +148,11 @@ test('generated G-code applies separate pen dwell, repeat passes and byte progre
   assert.match(result.gcode, /G0 Z0/);
   assert.match(result.gcode, /G4 P0\.18/);
   assert.match(result.gcode, /G4 P0\.08/);
-  assert.match(result.gcode, /G1 X30 Y267 F900/);
-  assert.ok((result.gcode.match(/G1 X10 Y287 F900/g) || []).length >= 1, 'repeat pass should return to the first point');
+  assert.match(result.gcode, /; Paper offset: X7\.5 Y9/);
+  assert.match(result.gcode, /G1 X17\.5 Y296 F3000/);
+  assert.match(result.gcode, /G1 X37\.5 Y276 F900/);
+  assert.ok((result.gcode.match(/G1 X17\.5 Y296 F900/g) || []).length >= 1, 'repeat pass should return to the first point');
+  assert.doesNotMatch(result.gcode, /G0 X|G0 Y/);
   assert.equal(result.pathByteRanges.length, 2);
   assert.ok(result.pathByteRanges[0].endFraction < result.pathByteRanges[1].endFraction);
   assert.equal(result.validation.valid, true);
@@ -165,9 +168,9 @@ test('directional repeated strokes lift and restart instead of reversing the nib
   });
   assert.equal(result.analysis.allowReverse, false);
   assert.equal(result.analysis.penLifts, 2);
-  assert.ok((result.gcode.match(/G0 X10 Y287 F2100/g) || []).length >= 2);
-  assert.equal((result.gcode.match(/G1 X40 Y287 F520/g) || []).length, 2);
-  assert.doesNotMatch(result.gcode, /G1 X10 Y287 F520/);
+  assert.ok((result.gcode.match(/G1 X17\.5 Y296 F2100/g) || []).length >= 2);
+  assert.equal((result.gcode.match(/G1 X47\.5 Y296 F520/g) || []).length, 2);
+  assert.doesNotMatch(result.gcode, /G1 X17\.5 Y296 F520/);
   assert.ok(result.analysis.warnings.some((item) => item.code === 'directional-repeat'));
 });
 
@@ -185,6 +188,11 @@ test('job analysis reports unsafe pen range and long ink strokes', () => {
   assert.ok(analysis.warnings.some((item) => item.code === 'continuous-stroke'));
   const fast = analyzeJob(paths, { ...TOOL_PROFILES.fineliner, travelFeed: 5000 });
   assert.ok(fast.errors.some((item) => item.code === 'feed-limit'));
+  const outsideServo = analyzeJob(paths, { ...TOOL_PROFILES.fineliner, penUp: 6, penDown: 0 });
+  assert.ok(outsideServo.errors.some((item) => item.code === 'pen-range-limit'));
+  const invalidPoint = generateGcode([[{ x: 1, y: 1 }, { x: Number.NaN, y: 2 }]]);
+  assert.equal(invalidPoint.validation.valid, false);
+  assert.ok(invalidPoint.analysis.errors.some((item) => item.code === 'invalid-coordinate'));
 });
 
 test('boundary program never lowers the pen', () => {

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f1f0eb">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; object-src 'none'; frame-src 'none'; base-uri 'none'">
   <title>HandDraw ESP</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -253,6 +254,9 @@
           <summary>Ручное управление и диагностика</summary>
           <div class="form-grid">
             <label class="field field-wide"><span>Адрес контроллера</span><input id="controllerAddress" type="text" placeholder="оставьте пустым при открытии с ESP32"></label>
+            <label class="field"><span>Лист от нуля X, мм</span><input id="paperOffsetX" type="number" min="0" max="15" step="0.1" value="7.5" data-regenerate></label>
+            <label class="field"><span>Лист от нуля Y, мм</span><input id="paperOffsetY" type="number" min="0" max="18" step="0.1" value="9" data-regenerate></label>
+            <p class="hint field-wide">Номинально A4 центрирован в поле 225 × 315 мм: X 7,5 и Y 9 мм. После изготовления углового упора внесите измеренные значения.</p>
             <label class="field"><span>Шаг перемещения</span>
               <select id="jogDistance"><option value="1">1 мм</option><option value="5" selected>5 мм</option><option value="10">10 мм</option></select>
             </label>

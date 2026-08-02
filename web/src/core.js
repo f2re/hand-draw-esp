@@ -3,6 +3,16 @@ export const PAGE_PRESETS = Object.freeze({
   A4_LANDSCAPE: Object.freeze({ id: 'A4_LANDSCAPE', name: 'A4 · альбомная', width: 297, height: 210, requiresRotation: true }),
 });
 
+export const MACHINE_DEFAULTS = Object.freeze({
+  workWidth: 225,
+  workHeight: 315,
+  paperOffsetX: 7.5,
+  paperOffsetY: 9,
+  servoMinZ: 0,
+  servoMaxZ: 5,
+  machineFeedLimit: 4200,
+});
+
 function freezeProfile(source) {
   return Object.freeze({
     ...source,
@@ -201,9 +211,34 @@ function finiteNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function coordinateNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
 function normalizePoint(point) {
-  if (Array.isArray(point)) return { x: finiteNumber(point[0]), y: finiteNumber(point[1]) };
-  return { x: finiteNumber(point?.x), y: finiteNumber(point?.y) };
+  if (Array.isArray(point)) return { x: coordinateNumber(point[0]), y: coordinateNumber(point[1]) };
+  return { x: coordinateNumber(point?.x), y: coordinateNumber(point?.y) };
+}
+
+export function validatePathData(paths) {
+  const issues = [];
+  if (!Array.isArray(paths)) return { valid: false, issues: ['Траектория должна быть массивом штрихов.'] };
+  for (let pathIndex = 0; pathIndex < paths.length; pathIndex += 1) {
+    const source = paths[pathIndex];
+    if (!Array.isArray(source)) {
+      issues.push(`Штрих ${pathIndex + 1} не является массивом точек.`);
+      continue;
+    }
+    for (let pointIndex = 0; pointIndex < source.length; pointIndex += 1) {
+      const point = normalizePoint(source[pointIndex]);
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        issues.push(`Штрих ${pathIndex + 1}, точка ${pointIndex + 1}: координаты должны быть конечными числами.`);
+        break;
+      }
+    }
+  }
+  return { valid: issues.length === 0, issues };
 }
 
 function distance(a, b) {
@@ -475,16 +510,13 @@ export function fitPathsToPage(paths, page = PAGE_PRESETS.A4_PORTRAIT, options =
 }
 
 export function validatePathsWithinPage(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
+  const dataValidation = validatePathData(paths);
   const clean = cleanPaths(paths);
   const epsilon = Math.max(0, finiteNumber(options.epsilon, 0.01));
-  const issues = [];
+  const issues = [...dataValidation.issues];
   if (!clean.length) issues.push('Нет траекторий для вывода.');
   for (let pathIndex = 0; pathIndex < clean.length; pathIndex += 1) {
     for (const point of clean[pathIndex]) {
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-        issues.push(`Штрих ${pathIndex + 1} содержит некорректную координату.`);
-        break;
-      }
       if (point.x < -epsilon || point.y < -epsilon || point.x > page.width + epsilon || point.y > page.height + epsilon) {
         issues.push(`Штрих ${pathIndex + 1} выходит за лист: X=${point.x.toFixed(2)}, Y=${point.y.toFixed(2)}.`);
         break;
@@ -799,6 +831,7 @@ export function estimateJob(paths, options = {}) {
 }
 
 export function analyzeJob(paths, options = {}) {
+  const dataValidation = validatePathData(paths);
   const clean = cleanPaths(paths);
   const estimate = estimateJob(clean, options);
   const lengths = clean.map(pathLength);
@@ -807,12 +840,19 @@ export function analyzeJob(paths, options = {}) {
   const maxContinuousStroke = Math.max(1, finiteNumber(options.maxContinuousStroke, 260));
   const penUp = finiteNumber(options.penUp, 5);
   const penDown = finiteNumber(options.penDown, 0);
+  const servoMinZ = finiteNumber(options.servoMinZ, MACHINE_DEFAULTS.servoMinZ);
+  const servoMaxZ = finiteNumber(options.servoMaxZ, MACHINE_DEFAULTS.servoMaxZ);
   const warnings = [];
-  const errors = [];
+  const errors = dataValidation.issues.map((message) => ({ code: 'invalid-coordinate', message }));
 
-  const machineFeedLimit = Math.max(100, finiteNumber(options.machineFeedLimit, 4200));
+  const machineFeedLimit = Math.max(100, finiteNumber(options.machineFeedLimit, MACHINE_DEFAULTS.machineFeedLimit));
   if (!clean.length) errors.push({ code: 'empty', message: 'Нет траекторий для выполнения.' });
+  if (servoMaxZ <= servoMinZ) errors.push({ code: 'servo-range-config', message: 'Некорректно задан рабочий диапазон сервопривода.' });
   if (penUp <= penDown) errors.push({ code: 'pen-range', message: 'Положение «перо вверх» должно быть выше положения «перо вниз».' });
+  if (penDown < servoMinZ || penDown > servoMaxZ || penUp < servoMinZ || penUp > servoMaxZ) errors.push({
+    code: 'pen-range-limit',
+    message: `Положения пера должны находиться в диапазоне Z ${servoMinZ.toFixed(1)}…${servoMaxZ.toFixed(1)} мм.`,
+  });
   if (estimate.drawFeed > machineFeedLimit || estimate.travelFeed > machineFeedLimit) errors.push({ code: 'feed-limit', message: `Подача превышает консервативный предел станка ${machineFeedLimit} мм/мин.` });
   if (longestStroke > maxContinuousStroke) warnings.push({
     code: 'continuous-stroke',
@@ -829,13 +869,50 @@ export function analyzeJob(paths, options = {}) {
   return { ...estimate, longestStroke, shortStrokeCount, warnings, errors, valid: errors.length === 0 };
 }
 
-function machinePointForPage(point, page, invertY) {
-  return { x: point.x, y: invertY ? page.height - point.y : point.y };
+function machineOptions(options = {}) {
+  return {
+    paperOffsetX: finiteNumber(options.paperOffsetX, MACHINE_DEFAULTS.paperOffsetX),
+    paperOffsetY: finiteNumber(options.paperOffsetY, MACHINE_DEFAULTS.paperOffsetY),
+    workWidth: Math.max(1, finiteNumber(options.workWidth, MACHINE_DEFAULTS.workWidth)),
+    workHeight: Math.max(1, finiteNumber(options.workHeight, MACHINE_DEFAULTS.workHeight)),
+    invertY: options.invertY !== false,
+  };
+}
+
+function machinePointForPage(point, page, options = {}) {
+  const machine = machineOptions(options);
+  return {
+    x: machine.paperOffsetX + point.x,
+    y: machine.paperOffsetY + (machine.invertY ? page.height - point.y : point.y),
+  };
+}
+
+function validateMachinePlacement(paths, page, options = {}) {
+  const machine = machineOptions(options);
+  const machinePaths = cleanPaths(paths).map((path) => path.map((point) => machinePointForPage(point, page, machine)));
+  const bounds = boundsOfPaths(machinePaths);
+  const issues = [];
+  if (machine.paperOffsetX < 0 || machine.paperOffsetY < 0) issues.push('Смещение листа относительно машинного нуля не может быть отрицательным.');
+  if (machine.paperOffsetX + page.width > machine.workWidth + 0.01 || machine.paperOffsetY + page.height > machine.workHeight + 0.01) {
+    issues.push(`Лист ${page.width.toFixed(1)} × ${page.height.toFixed(1)} мм не помещается в рабочее поле при заданном смещении.`);
+  }
+  if (machinePaths.length && (bounds.minX < -0.01 || bounds.minY < -0.01 || bounds.maxX > machine.workWidth + 0.01 || bounds.maxY > machine.workHeight + 0.01)) {
+    issues.push(`Макет выходит за рабочее поле ${machine.workWidth.toFixed(1)} × ${machine.workHeight.toFixed(1)} мм после учёта положения листа.`);
+  }
+  return { valid: issues.length === 0, issues, bounds, machinePaths, machine };
 }
 
 export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
   const clean = cleanPaths(paths);
-  const validation = validatePathsWithinPage(clean, page);
+  const pageValidation = validatePathsWithinPage(paths, page);
+  const placement = validateMachinePlacement(clean, page, options);
+  const validation = {
+    valid: pageValidation.valid && placement.valid,
+    issues: [...pageValidation.issues, ...placement.issues],
+    bounds: pageValidation.bounds,
+    machineBounds: placement.bounds,
+    pathCount: pageValidation.pathCount,
+  };
   const drawFeed = Math.max(1, finiteNumber(options.drawFeed, 1200));
   const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 3600));
   const penUp = finiteNumber(options.penUp, 5);
@@ -845,13 +922,13 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
   const penUpDwell = Math.max(0, finiteNumber(options.penUpDwell, fallbackDwell));
   const strokeRepeats = Math.max(1, Math.min(3, Math.round(finiteNumber(options.strokeRepeats, 1))));
   const allowReverse = options.allowReverse !== false;
-  const invertY = options.invertY !== false;
   const returnHome = options.returnHome !== false;
   const toolName = String(options.toolName || options.toolId || 'универсальный инструмент').replace(/[\r\n]+/g, ' ');
   const lines = [
     '; HandDraw ESP',
     `; Tool: ${toolName}`,
     `; Paths: ${clean.length}`,
+    `; Paper offset: X${formatNumber(placement.machine.paperOffsetX)} Y${formatNumber(placement.machine.paperOffsetY)}`,
     'G21',
     'G90',
     'G94',
@@ -860,23 +937,22 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
   if (penUpDwell > 0) lines.push(`G4 P${formatNumber(penUpDwell)}`);
   const ranges = [];
 
-  for (const path of clean) {
+  for (const path of placement.machinePaths) {
     const startByte = utf8Length(`${lines.join('\n')}\n`);
-    const machinePath = path.map((point) => machinePointForPage(point, page, invertY));
-    const first = machinePath[0];
+    const first = path[0];
     lines.push(`G0 Z${formatNumber(penUp)}`);
-    lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
+    lines.push(`G1 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
     lines.push(`G0 Z${formatNumber(penDown)}`);
     if (penDownDwell > 0) lines.push(`G4 P${formatNumber(penDownDwell)}`);
     for (let repeat = 0; repeat < strokeRepeats; repeat += 1) {
       if (repeat > 0 && !allowReverse) {
         lines.push(`G0 Z${formatNumber(penUp)}`);
         if (penUpDwell > 0) lines.push(`G4 P${formatNumber(penUpDwell)}`);
-        lines.push(`G0 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
+        lines.push(`G1 X${formatNumber(first.x)} Y${formatNumber(first.y)} F${formatNumber(travelFeed, 0)}`);
         lines.push(`G0 Z${formatNumber(penDown)}`);
         if (penDownDwell > 0) lines.push(`G4 P${formatNumber(penDownDwell)}`);
       }
-      const points = allowReverse && repeat % 2 === 1 ? [...machinePath].reverse().slice(1) : machinePath.slice(1);
+      const points = allowReverse && repeat % 2 === 1 ? [...path].reverse().slice(1) : path.slice(1);
       for (const point of points) lines.push(`G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(drawFeed, 0)}`);
     }
     lines.push(`G0 Z${formatNumber(penUp)}`);
@@ -884,7 +960,7 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
     const endByte = utf8Length(`${lines.join('\n')}\n`);
     ranges.push({ startByte, endByte });
   }
-  if (returnHome) lines.push(`G0 X0 Y0 F${formatNumber(travelFeed, 0)}`);
+  if (returnHome) lines.push(`G1 X0 Y0 F${formatNumber(travelFeed, 0)}`);
   lines.push('M2');
   const gcode = `${lines.join('\n')}\n`;
   const totalBytes = Math.max(1, utf8Length(gcode));
@@ -893,7 +969,7 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
     startFraction: range.startByte / totalBytes,
     endFraction: range.endByte / totalBytes,
   }));
-  const analysis = analyzeJob(clean, {
+  const analysis = analyzeJob(placement.machinePaths, {
     ...options,
     drawFeed,
     travelFeed,
@@ -903,7 +979,12 @@ export function generateGcode(paths, page = PAGE_PRESETS.A4_PORTRAIT, options = 
     penUpDwell,
     strokeRepeats,
   });
-  return { gcode, pathByteRanges, validation, estimate: analysis, analysis };
+  const sourceDataValidation = validatePathData(paths);
+  if (!sourceDataValidation.valid) {
+    analysis.errors.unshift(...sourceDataValidation.issues.map((message) => ({ code: 'invalid-coordinate', message })));
+    analysis.valid = false;
+  }
+  return { gcode, pathByteRanges, validation, estimate: analysis, analysis, placement };
 }
 
 export function generateBoundaryGcode(bounds, page = PAGE_PRESETS.A4_PORTRAIT, options = {}) {
@@ -915,17 +996,24 @@ export function generateBoundaryGcode(bounds, page = PAGE_PRESETS.A4_PORTRAIT, o
   const maxY = Math.min(page.height, finiteNumber(source.maxY, page.height - 10) + padding);
   const penUp = finiteNumber(options.penUp, 5);
   const travelFeed = Math.max(1, finiteNumber(options.travelFeed, 2400));
-  const invertY = options.invertY !== false;
   const rectangle = [
     { x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }, { x: minX, y: minY },
-  ].map((point) => machinePointForPage(point, page, invertY));
+  ].map((point) => machinePointForPage(point, page, options));
+  const placement = validateMachinePlacement([
+    [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }, { x: minX, y: minY }],
+  ], page, options);
+  if (!placement.valid) throw new RangeError(placement.issues.join(' '));
   const lines = [
     '; HandDraw ESP boundary check — pen remains raised',
     'G21', 'G90', 'G94', `G0 Z${formatNumber(penUp)}`,
-    `G0 X${formatNumber(rectangle[0].x)} Y${formatNumber(rectangle[0].y)} F${formatNumber(travelFeed, 0)}`,
+    `G1 X${formatNumber(rectangle[0].x)} Y${formatNumber(rectangle[0].y)} F${formatNumber(travelFeed, 0)}`,
     ...rectangle.slice(1).map((point) => `G1 X${formatNumber(point.x)} Y${formatNumber(point.y)} F${formatNumber(travelFeed, 0)}`),
-    `G0 X0 Y0 F${formatNumber(travelFeed, 0)}`,
+    `G1 X0 Y0 F${formatNumber(travelFeed, 0)}`,
     'M2',
   ];
-  return { gcode: `${lines.join('\n')}\n`, bounds: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY } };
+  return {
+    gcode: `${lines.join('\n')}\n`,
+    bounds: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY },
+    machineBounds: placement.bounds,
+  };
 }

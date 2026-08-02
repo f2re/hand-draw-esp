@@ -44,6 +44,14 @@ def validate_config() -> None:
         fail("pen servo configuration mismatch")
     if config["sdcard"]["cs_pin"] != "gpio.15":
         fail("MKS DLC32 SD pin mismatch")
+    if config.get("start", {}).get("must_home") is not False:
+        fail("commissioning config must allow direction checks before homing")
+    production = yaml.safe_load((ROOT / "firmware" / "fluidnc" / "config-production.yaml").read_text(encoding="utf-8"))
+    if production.get("start", {}).get("must_home") is not True:
+        fail("production config must require homing")
+    for axis_name in ("x", "y"):
+        if production["axes"][axis_name]["motor0"].get("hard_limits") is not True:
+            fail(f"production config must enable {axis_name.upper()} hard limits")
 
 
 def validate_bom() -> None:
@@ -214,9 +222,14 @@ def validate_operator_ui() -> None:
     missing_profiles = sorted(profile for profile in required_profiles if f"{profile}: freezeProfile" not in core)
     if missing_profiles:
         fail("tool profiles missing: " + ", ".join(missing_profiles))
-    for token in ("rasterToComicPaths", "directional-repeat", "G94", "generateBoundaryGcode"):
+    for token in (
+        "rasterToComicPaths", "directional-repeat", "G94", "generateBoundaryGcode",
+        "MACHINE_DEFAULTS", "paperOffsetX", "pen-range-limit", "invalid-coordinate",
+    ):
         if token not in core:
             fail(f"motion/media logic lost required token: {token}")
+    if "G0 X" in core or "G0 Y" in core:
+        fail("XY travel must use feed-controlled G1 rather than rapid G0")
     for token in ("readyHomed", "confirmPenTest", "confirmBoundary", "confirmSupervision"):
         if token not in html:
             fail(f"operator preflight lost required control: {token}")
@@ -224,8 +237,13 @@ def validate_operator_ui() -> None:
         fail("operator navigation lacks tab/tabpanel semantics")
     if "bindRovingTabs" not in app or "Object.values(ready).every(Boolean)" not in app:
         fail("keyboard navigation or launch gate is missing")
-    if "safeJobFileName" not in fluidnc or "putFile(path" not in fluidnc:
-        fail("portable naming or verified file upload is missing")
+    for token in ("safeJobFileName", "byte-for-byte", "moveFile", "commandQueue", "finishActiveCommand"):
+        if token not in fluidnc:
+            fail(f"FluidNC reliability feature is missing: {token}")
+    svg_import = (ROOT / "web/src/svg-import.js").read_text(encoding="utf-8")
+    for token in ("ALLOWED_ELEMENTS", "unsafeAttributeValue", "MAX_SVG_ELEMENTS"):
+        if token not in svg_import:
+            fail(f"SVG sanitizer is missing: {token}")
     if "tests/browser_smoke.py --no-screenshot" not in ci or "playwright install" not in ci:
         fail("CI does not execute the real browser operator flow")
 
@@ -255,6 +273,7 @@ def validate_docs() -> None:
         "hardware/cad/component_dimensions.scad",
         "hardware/cad/plotter_parts.scad",
         "firmware/fluidnc/INSTALL.md",
+        "firmware/fluidnc/config-production.yaml",
         "scripts/setup_project.py",
         "scripts/prepare_controller_bundle.py",
         "scripts/install_fluidnc.py",

@@ -1,4 +1,5 @@
 import {
+  MACHINE_DEFAULTS,
   PAGE_PRESETS,
   TEXT_PRESETS,
   TOOL_PROFILES,
@@ -28,7 +29,7 @@ const SETTINGS_IDS = [
   'svgSampleStep', 'svgTolerance', 'imageThreshold', 'hatchSpacing', 'hatchAngle', 'contourStep', 'imageInvert',
   'pagePreset', 'marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'optimizePaths', 'showTravel',
   'drawFeed', 'travelFeed', 'penUp', 'penDown', 'penDownDwell', 'penUpDwell', 'strokeRepeats', 'returnHome', 'jobName',
-  'controllerAddress', 'jogDistance', 'jogFeed',
+  'paperOffsetX', 'paperOffsetY', 'controllerAddress', 'jogDistance', 'jogFeed',
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -365,10 +366,23 @@ function restoreSettings() {
   updateProfileSummaryFromControls();
 }
 
+function machinePlacementOptions() {
+  return {
+    paperOffsetX: numberValue('#paperOffsetX', MACHINE_DEFAULTS.paperOffsetX),
+    paperOffsetY: numberValue('#paperOffsetY', MACHINE_DEFAULTS.paperOffsetY),
+    workWidth: MACHINE_DEFAULTS.workWidth,
+    workHeight: MACHINE_DEFAULTS.workHeight,
+    servoMinZ: MACHINE_DEFAULTS.servoMinZ,
+    servoMaxZ: MACHINE_DEFAULTS.servoMaxZ,
+    machineFeedLimit: MACHINE_DEFAULTS.machineFeedLimit,
+  };
+}
+
 function activeToolOptions() {
   const profile = getToolProfile(state.toolProfileId);
   return {
     ...profile,
+    ...machinePlacementOptions(),
     drawFeed: numberValue('#drawFeed', profile.drawFeed),
     travelFeed: numberValue('#travelFeed', profile.travelFeed),
     jogFeed: numberValue('#jogFeed', profile.jogFeed),
@@ -938,12 +952,6 @@ function updateMachineStatus(status) {
     state.machine.homingPending = false;
     logMachine('Homing завершён; координаты станка установлены.');
   }
-  if (state.machine.penTestPending && currentBase === 'idle' && ['run', 'cycle'].includes(previousBase)) {
-    state.machine.penTestPending = false;
-    state.machine.penTestSent = true;
-    $('#confirmPenTest').disabled = false;
-    logMachine('Тест пера завершён. Проверьте механику и подтвердите результат.');
-  }
   if (state.machine.boundaryPending && status.job?.complete && /handdraw-boundary\.gcode$/i.test(status.job.file || '')) {
     state.machine.boundaryPending = false;
     state.boundarySent = true;
@@ -1041,6 +1049,7 @@ function updateReadiness() {
   markReady('readyUploaded', ready.uploaded, ready.boundary && ready.pen);
 
   const statusKind = machineStateKind(state.client?.status);
+  $('#downloadGcodeButton').disabled = !ready.layout;
   $('#homeButton').disabled = !ready.connected || statusKind === 'motion';
   $('#penTestButton').disabled = !ready.idle || !ready.homed;
   $('#dryRunButton').disabled = !ready.idle || !ready.homed || !ready.paper || !ready.layout;
@@ -1076,7 +1085,7 @@ async function uploadJob() {
   const result = await client.uploadJob(state.gcode, $('#jobName').value, 'sd');
   state.uploadedJob = result;
   state.uploadedSignature = state.gcodeSignature;
-  logMachine(`Задание записано и проверено: ${result.path} (${result.bytes} байт).`);
+  logMachine(`Задание записано и побайтово проверено: ${result.path} (${result.bytes} байт).`);
   updateReadiness();
 }
 
@@ -1092,7 +1101,7 @@ async function runBoundaryCheck() {
   });
   const client = ensureClient();
   const result = await client.uploadJob(boundary.gcode, 'handdraw-boundary.gcode', 'sd');
-  client.startJob(result.path, result.storage);
+  await client.startJob(result.path, result.storage);
   state.machine.boundaryPending = true;
   state.boundarySent = false;
   $('#confirmBoundary').disabled = true;
@@ -1101,22 +1110,35 @@ async function runBoundaryCheck() {
   updateReadiness();
 }
 
-function runPenTest() {
+async function runPenTest() {
   const profile = activeToolOptions();
-  ensureClient().testPen({
-    penUp: profile.penUp,
-    penDown: profile.penDown,
-    penDownDwell: Math.max(profile.penDownDwell, 0.35),
-    penUpDwell: Math.max(profile.penUpDwell, 0.35),
-    feed: 180,
-  });
   state.machine.penTestPending = true;
   state.machine.penTestSent = false;
   state.machine.previousState = state.client?.status?.state || 'Idle';
   $('#confirmPenTest').disabled = true;
   $('#confirmPenTest').checked = false;
-  logMachine(`Отправлен тест пера для профиля «${profile.name}». Подтвердите результат после завершения.`);
+  logMachine(`Выполняется тест пера для профиля «${profile.name}».`);
   updateReadiness();
+  try {
+    await ensureClient().testPen({
+      penUp: profile.penUp,
+      penDown: profile.penDown,
+      penDownDwell: Math.max(profile.penDownDwell, 0.35),
+      penUpDwell: Math.max(profile.penUpDwell, 0.35),
+      feed: 180,
+    });
+    state.machine.penTestPending = false;
+    state.machine.penTestSent = true;
+    $('#confirmPenTest').disabled = false;
+    logMachine('Тест пера подтверждён контроллером. Проверьте механику и отметьте результат.');
+  } catch (error) {
+    state.machine.penTestPending = false;
+    state.machine.penTestSent = false;
+    $('#confirmPenTest').disabled = true;
+    throw error;
+  } finally {
+    updateReadiness();
+  }
 }
 
 function showStartDialog() {
@@ -1129,6 +1151,7 @@ function showStartDialog() {
     `Инструмент: ${profile.name}.`,
     `Время: около ${formatDuration(state.analysis.seconds)}; штрихов: ${state.analysis.pathCount}.`,
     `Файл: ${state.uploadedJob.path}.`,
+    `Лист: X${formatDecimal(machinePlacementOptions().paperOffsetX, 1)} / Y${formatDecimal(machinePlacementOptions().paperOffsetY, 1)} мм от машинного нуля.`,
   ];
   for (const message of lines) {
     const paragraph = document.createElement('p');
@@ -1148,15 +1171,17 @@ function closeStartDialog() {
   else dialog.removeAttribute('open');
 }
 
-function confirmStart() {
+async function confirmStart() {
   const ready = readinessState();
   if (!Object.values(ready).every(Boolean) || !$('#confirmSupervision').checked) return;
+  $('#confirmStartButton').disabled = true;
   try {
-    ensureClient().startJob(state.uploadedJob.path, state.uploadedJob.storage);
+    await ensureClient().startJob(state.uploadedJob.path, state.uploadedJob.storage);
     logMachine(`Запущено: ${state.uploadedJob.path}.`);
     closeStartDialog();
   } catch (error) {
     logMachine(error.message);
+    $('#confirmStartButton').disabled = !$('#confirmSupervision').checked;
   }
 }
 
@@ -1181,7 +1206,8 @@ function bindEvents() {
   $('#generateButton').addEventListener('click', generate);
   $('#downloadGcodeButton').addEventListener('click', async () => {
     if (!state.gcode) await generate();
-    if (state.gcode) downloadBlob($('#jobName').value || 'handdraw-job.gcode', state.gcode, 'text/plain;charset=utf-8');
+    if (!state.validation?.valid || !state.analysis?.valid) return updateValidation();
+    downloadBlob($('#jobName').value || 'handdraw-job.gcode', state.gcode, 'text/plain;charset=utf-8');
   });
   $('#simulateButton').addEventListener('click', startSimulation);
   $('#resetSimulationButton').addEventListener('click', stopSimulation);
@@ -1225,17 +1251,26 @@ function bindEvents() {
 
   $('#connectButton').addEventListener('click', () => connectMachine().catch((error) => logMachine(error.message)));
   $('#disconnectButton').addEventListener('click', () => state.client?.disconnect());
-  $('#homeButton').addEventListener('click', () => {
+  $('#homeButton').addEventListener('click', async () => {
     try {
       state.machine.homed = false;
       state.machine.homingPending = true;
       state.machine.previousState = state.client?.status?.state || 'Unknown';
-      ensureClient().home();
       logMachine('Homing запущен.');
       updateReadiness();
-    } catch (error) { logMachine(error.message); }
+      await ensureClient().home();
+      state.machine.homed = true;
+      state.machine.homingPending = false;
+      logMachine('Homing подтверждён контроллером.');
+      updateReadiness();
+    } catch (error) {
+      state.machine.homed = false;
+      state.machine.homingPending = false;
+      logMachine(error.message);
+      updateReadiness();
+    }
   });
-  $('#penTestButton').addEventListener('click', () => { try { runPenTest(); } catch (error) { logMachine(error.message); } });
+  $('#penTestButton').addEventListener('click', () => runPenTest().catch((error) => logMachine(error.message)));
   $('#dryRunButton').addEventListener('click', () => runBoundaryCheck().catch((error) => logMachine(error.message)));
   $('#uploadButton').addEventListener('click', () => uploadJob().catch((error) => logMachine(error.message)));
   $('#startButton').addEventListener('click', showStartDialog);
@@ -1248,17 +1283,25 @@ function bindEvents() {
     $('#confirmBoundary').disabled = true;
     state.client?.stop();
   });
-  $('#unlockButton').addEventListener('click', () => { try { ensureClient().unlock(); } catch (error) { logMachine(error.message); } });
-  $('#penUpButton').addEventListener('click', () => {
-    try { const profile = activeToolOptions(); ensureClient().setPen(true, { ...profile, feed: 180, dwell: profile.penUpDwell }); } catch (error) { logMachine(error.message); }
+  $('#unlockButton').addEventListener('click', async () => {
+    try { await ensureClient().unlock(); } catch (error) { logMachine(error.message); }
   });
-  $('#penDownButton').addEventListener('click', () => {
-    try { const profile = activeToolOptions(); ensureClient().setPen(false, { ...profile, feed: 180, dwell: profile.penDownDwell }); } catch (error) { logMachine(error.message); }
+  $('#penUpButton').addEventListener('click', async () => {
+    try {
+      const profile = activeToolOptions();
+      await ensureClient().setPen(true, { ...profile, feed: 180, dwell: profile.penUpDwell });
+    } catch (error) { logMachine(error.message); }
   });
-  $$('[data-jog-axis]').forEach((button) => button.addEventListener('click', () => {
+  $('#penDownButton').addEventListener('click', async () => {
+    try {
+      const profile = activeToolOptions();
+      await ensureClient().setPen(false, { ...profile, feed: 180, dwell: profile.penDownDwell });
+    } catch (error) { logMachine(error.message); }
+  });
+  $$('[data-jog-axis]').forEach((button) => button.addEventListener('click', async () => {
     try {
       const distance = numberValue('#jogDistance', 5) * Number(button.dataset.jogSign || 1);
-      ensureClient().jog(button.dataset.jogAxis, distance, numberValue('#jogFeed', activeToolOptions().jogFeed));
+      await ensureClient().jog(button.dataset.jogAxis, distance, numberValue('#jogFeed', activeToolOptions().jogFeed));
     } catch (error) { logMachine(error.message); }
   }));
 
