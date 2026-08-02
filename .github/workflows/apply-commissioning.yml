@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  issue_comment:
+    types: [created]
   pull_request_target:
     types: [edited, reopened, synchronize, ready_for_review]
 
@@ -16,7 +18,11 @@ concurrency:
 
 jobs:
   apply:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'agent/commissioning-profiles'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && github.event.issue.number == 6 && github.event.comment.body == '/apply-commissioning') ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'agent/commissioning-profiles')
     runs-on: ubuntu-latest
     steps:
       - name: Получить рабочую ветку
