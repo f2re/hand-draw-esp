@@ -31,15 +31,40 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Применить пакет
+      - name: Восстановить и применить пакет
         shell: bash
         run: |
           set -euo pipefail
           test -f .commissioning-overlay/ready
           test "$(find .commissioning-overlay -maxdepth 1 -name 'part-*' -type f | wc -l)" -eq 5
-          cat .commissioning-overlay/part-* | tr -cd 'A-Za-z0-9+/=' > /tmp/commissioning.patch.gz.b64
-          base64 --decode /tmp/commissioning.patch.gz.b64 > /tmp/commissioning.patch.gz
-          echo '4d365cc0e11d34d26a28e169d7e7595ab39d61fbc7013eee37e182e6ebb63ca8  /tmp/commissioning.patch.gz' | sha256sum --check --strict
+          python - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import re
+          from pathlib import Path
+
+          expected = "4d365cc0e11d34d26a28e169d7e7595ab39d61fbc7013eee37e182e6ebb63ca8"
+          parts = sorted(Path('.commissioning-overlay').glob('part-*'))
+          chunks: list[str] = []
+          for path in parts:
+              source = path.read_text(encoding='utf-8-sig')
+              clean = re.sub(r'[^A-Za-z0-9+/=]', '', source)
+              print(f'{path.name}: source={len(source)} clean={len(clean)} mod4={len(clean) % 4} padding={clean.count("=")}')
+              chunks.append(clean)
+          encoded = ''.join(chunks)
+          print(f'total: chars={len(encoded)} mod4={len(encoded) % 4} padding={encoded.count("=")}')
+          if '=' in encoded[:-2]:
+              raise SystemExit('Base64 stream contains padding before the final quantum')
+          padded = encoded + '=' * ((-len(encoded)) % 4)
+          data = base64.b64decode(padded, validate=True)
+          digest = hashlib.sha256(data).hexdigest()
+          print(f'decoded: bytes={len(data)} sha256={digest}')
+          if digest != expected:
+              raise SystemExit(f'Unexpected package SHA-256: {digest}')
+          Path('/tmp/commissioning.patch.gz').write_bytes(data)
+          PY
           gzip -dc /tmp/commissioning.patch.gz > /tmp/commissioning.patch
           git apply --check /tmp/commissioning.patch
           git apply /tmp/commissioning.patch
