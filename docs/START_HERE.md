@@ -336,3 +336,7 @@ Guru Meditation
 - [`docs/ART_DIRECTION.md`](ART_DIRECTION.md) — принципы интерфейса;
 - [`docs/CALIBRATION.md`](CALIBRATION.md) — калибровка;
 - [`docs/SAFETY.md`](SAFETY.md) — безопасность.
+
+## Интерактивный ввод в эксплуатацию
+
+После электрической проверки откройте [`COMMISSIONING.md`](COMMISSIONING.md), создайте профиль своего станка, опросите FluidNC, проверьте направления и концевики, затем рассчитайте steps/mm.

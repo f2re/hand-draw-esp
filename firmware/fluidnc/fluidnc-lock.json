@@ -1,0 +1,13 @@
+{
+  "format": "handdraw-fluidnc-lock-v1",
+  "repository": "bdring/FluidNC",
+  "tag": "v4.0.3",
+  "release_api": "https://api.github.com/repos/bdring/FluidNC/releases/tags/v4.0.3",
+  "verified_on": "2026-08-02",
+  "board": "MKS DLC32 V2.1",
+  "config_profiles": [
+    "config.yaml",
+    "config-production.yaml"
+  ],
+  "notes": "Версия зафиксирована для воспроизводимой установки. Переход на другой выпуск выполняется явно и только после проверки конфигурации, WebUI и реального контроллера."
+}

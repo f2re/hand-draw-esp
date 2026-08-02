@@ -11,7 +11,107 @@ export const MACHINE_DEFAULTS = Object.freeze({
   servoMinZ: 0,
   servoMaxZ: 5,
   machineFeedLimit: 4200,
+  stepsPerMmX: 80,
+  stepsPerMmY: 80,
+  supportedFluidNCVersion: '4.0.3',
 });
+
+export const MACHINE_PROFILE_FORMAT = 'handdraw-machine-profile-v1';
+
+function profileNumber(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  const normalized = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(minimum, Math.min(maximum, normalized));
+}
+
+function shortProfileText(value, fallback = '', maximum = 160) {
+  const text = String(value ?? fallback).trim();
+  return (text || String(fallback)).slice(0, maximum);
+}
+
+export function validateMachineProfile(source) {
+  if (!source || typeof source !== 'object') throw new TypeError('Профиль станка должен быть объектом JSON.');
+  if (source.format !== MACHINE_PROFILE_FORMAT) throw new TypeError('Неизвестный формат профиля станка.');
+
+  const geometrySource = source.geometry ?? {};
+  const penSource = source.pen ?? {};
+  const controllerSource = source.controller ?? {};
+  const commissioningSource = source.commissioning ?? {};
+  const workWidth = profileNumber(geometrySource.workWidth, MACHINE_DEFAULTS.workWidth, 20, 2000);
+  const workHeight = profileNumber(geometrySource.workHeight, MACHINE_DEFAULTS.workHeight, 20, 2000);
+  const paperOffsetX = profileNumber(geometrySource.paperOffsetX, MACHINE_DEFAULTS.paperOffsetX, 0, workWidth);
+  const paperOffsetY = profileNumber(geometrySource.paperOffsetY, MACHINE_DEFAULTS.paperOffsetY, 0, workHeight);
+  const servoMinZ = profileNumber(penSource.servoMinZ, MACHINE_DEFAULTS.servoMinZ, -100, 100);
+  const servoMaxZ = profileNumber(penSource.servoMaxZ, MACHINE_DEFAULTS.servoMaxZ, -100, 100);
+  if (!(servoMaxZ > servoMinZ)) throw new RangeError('Верхняя граница Z должна быть больше нижней.');
+  const penDown = profileNumber(penSource.penDown, servoMinZ, servoMinZ, servoMaxZ);
+  const penUp = profileNumber(penSource.penUp, servoMaxZ, servoMinZ, servoMaxZ);
+  if (!(penUp > penDown)) throw new RangeError('Положение поднятого пера должно быть выше положения опущенного.');
+
+  return {
+    format: MACHINE_PROFILE_FORMAT,
+    version: 1,
+    name: shortProfileText(source.name, 'Профиль станка', 80),
+    controller: {
+      board: shortProfileText(controllerSource.board, 'MKS DLC32 V2.1', 80),
+      fluidncVersion: shortProfileText(controllerSource.fluidncVersion, '', 40),
+      configFile: shortProfileText(controllerSource.configFile, '', 120),
+      sdStatus: shortProfileText(controllerSource.sdStatus, '', 240),
+    },
+    geometry: {
+      workWidth,
+      workHeight,
+      paperOffsetX,
+      paperOffsetY,
+      stepsPerMmX: profileNumber(geometrySource.stepsPerMmX, MACHINE_DEFAULTS.stepsPerMmX, 1, 5000),
+      stepsPerMmY: profileNumber(geometrySource.stepsPerMmY, MACHINE_DEFAULTS.stepsPerMmY, 1, 5000),
+    },
+    pen: { servoMinZ, servoMaxZ, penUp, penDown },
+    commissioning: {
+      directionX: Boolean(commissioningSource.directionX),
+      directionY: Boolean(commissioningSource.directionY),
+      limitX: Boolean(commissioningSource.limitX),
+      limitY: Boolean(commissioningSource.limitY),
+      homingRepeated: Boolean(commissioningSource.homingRepeated),
+    },
+    notes: shortProfileText(source.notes, '', 1000),
+    updatedAt: shortProfileText(source.updatedAt, new Date().toISOString(), 40),
+  };
+}
+
+export function createDefaultMachineProfile(name = 'A4 · центрированный') {
+  return validateMachineProfile({
+    format: MACHINE_PROFILE_FORMAT,
+    name,
+    controller: { board: 'MKS DLC32 V2.1', fluidncVersion: '', configFile: 'config.yaml', sdStatus: '' },
+    geometry: {
+      workWidth: MACHINE_DEFAULTS.workWidth,
+      workHeight: MACHINE_DEFAULTS.workHeight,
+      paperOffsetX: MACHINE_DEFAULTS.paperOffsetX,
+      paperOffsetY: MACHINE_DEFAULTS.paperOffsetY,
+      stepsPerMmX: MACHINE_DEFAULTS.stepsPerMmX,
+      stepsPerMmY: MACHINE_DEFAULTS.stepsPerMmY,
+    },
+    pen: {
+      servoMinZ: MACHINE_DEFAULTS.servoMinZ,
+      servoMaxZ: MACHINE_DEFAULTS.servoMaxZ,
+      penUp: MACHINE_DEFAULTS.servoMaxZ,
+      penDown: MACHINE_DEFAULTS.servoMinZ,
+    },
+    commissioning: {},
+    notes: 'Номинальная геометрия до измерения конкретного станка.',
+  });
+}
+
+export function calculateCalibratedStepsPerMm(currentStepsPerMm, commandedDistance, measuredDistance) {
+  const current = Number(currentStepsPerMm);
+  const commanded = Number(commandedDistance);
+  const measured = Number(measuredDistance);
+  if (![current, commanded, measured].every(Number.isFinite) || current <= 0 || commanded <= 0 || measured <= 0) {
+    throw new RangeError('Для калибровки нужны положительные конечные значения шагов и расстояний.');
+  }
+  return current * commanded / measured;
+}
 
 function freezeProfile(source) {
   return Object.freeze({

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import {
   PAGE_PRESETS,
   TEXT_PRESETS,
+  calculateCalibratedStepsPerMm,
+  createDefaultMachineProfile,
   TOOL_PROFILES,
   analyzeJob,
   boundsOfPaths,
@@ -22,9 +24,10 @@ import {
   rasterToContourPaths,
   rasterToHatchPaths,
   validateFont,
+  validateMachineProfile,
   validatePathsWithinPage,
 } from '../web/src/core.js';
-import { FluidNCClient, machineStateKind, parseFluidNCStatus, safeJobFileName } from '../web/src/fluidnc.js';
+import { FluidNCClient, machineStateKind, parseControllerBuildInfo, parseFluidNCStatus, safeJobFileName } from '../web/src/fluidnc.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const font = validateFont(JSON.parse(fs.readFileSync(path.join(here, '../web/src/fonts/technical-cyrillic.json'), 'utf8')));
@@ -201,6 +204,25 @@ test('boundary program never lowers the pen', () => {
   assert.match(result.gcode, /G0 Z5/);
   assert.doesNotMatch(result.gcode, /Z0(?:\D|$)/);
   assert.ok(result.bounds.minX >= 0 && result.bounds.maxY <= 297);
+});
+
+
+test('machine profile keeps commissioned geometry and calculates corrected steps', () => {
+  const profile = createDefaultMachineProfile('Эталонный станок');
+  profile.geometry.paperOffsetX = 8.1;
+  profile.geometry.stepsPerMmX = calculateCalibratedStepsPerMm(80, 100, 99.4);
+  profile.commissioning.directionX = true;
+  const normalized = validateMachineProfile(profile);
+  assert.equal(normalized.name, 'Эталонный станок');
+  assert.equal(normalized.geometry.paperOffsetX, 8.1);
+  assert.ok(Math.abs(normalized.geometry.stepsPerMmX - 80.4829) < 0.0001);
+  assert.equal(normalized.commissioning.directionX, true);
+});
+
+test('controller build parser extracts pinned FluidNC version', () => {
+  const info = parseControllerBuildInfo(['[VER:3.4 FluidNC v4.0.3 (wifi):]', '[OPT:V,15,128]']);
+  assert.equal(info.version, '4.0.3');
+  assert.match(info.summary, /FluidNC/);
 });
 
 test('FluidNC status parser extracts position, state kind and SD progress', () => {

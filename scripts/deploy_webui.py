@@ -23,6 +23,13 @@ CONFIG_FILES = {
 }
 
 
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 class FluidNCDeployer:
     def __init__(self, base_url: str, insecure: bool = False) -> None:
         self.base_url = base_url.rstrip("/")
@@ -140,7 +147,7 @@ class FluidNCDeployer:
                 except Exception:
                     pass
         mode = "MOVE" if moved else "verified fallback PUT"
-        print(f"Uploaded {local_path.relative_to(ROOT)} -> {remote_path} ({len(payload)} bytes, {mode})")
+        print(f"Uploaded {display_path(local_path)} -> {remote_path} ({len(payload)} bytes, {mode})")
 
 
 def main() -> int:
@@ -148,12 +155,17 @@ def main() -> int:
     parser.add_argument("host", help="controller address, e.g. 192.168.0.42 or http://fluidnc.local")
     parser.add_argument("--user", help="FluidNC HTTP user when authentication is enabled")
     parser.add_argument("--password", help="FluidNC HTTP password")
-    parser.add_argument("--with-config", action="store_true", help="also upload the selected FluidNC configuration")
-    parser.add_argument(
+    parser.add_argument("--with-config", action="store_true", help="also upload a FluidNC configuration")
+    config_group = parser.add_mutually_exclusive_group()
+    config_group.add_argument(
         "--config-profile",
         choices=sorted(CONFIG_FILES),
-        default="commissioning",
-        help="configuration uploaded by --with-config",
+        help="repository configuration uploaded by --with-config",
+    )
+    config_group.add_argument(
+        "--config-file",
+        type=Path,
+        help="generated or custom YAML; implies --with-config",
     )
     parser.add_argument("--insecure", action="store_true", help="disable TLS certificate validation")
     parser.add_argument("--no-build", action="store_true", help="use existing dist/index.html.gz")
@@ -163,7 +175,11 @@ def main() -> int:
     base_url = args.host if "://" in args.host else f"http://{args.host}"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_dir = (args.backup_dir or ROOT / "backups" / stamp).expanduser().resolve()
-    config_file = CONFIG_FILES[args.config_profile]
+    config_profile = args.config_profile or "commissioning"
+    config_file = args.config_file.expanduser().resolve() if args.config_file else CONFIG_FILES[config_profile]
+    upload_config = args.with_config or args.config_file is not None
+    if upload_config and not config_file.is_file():
+        parser.error(f"configuration file not found: {config_file}")
 
     try:
         if not args.no_build:
@@ -172,9 +188,10 @@ def main() -> int:
         if args.user is not None:
             deployer.login(args.user, args.password or "")
         deployer.atomic_put_and_verify("/flash/index.html.gz", DIST_FILE, "application/gzip", backup_dir)
-        if args.with_config:
+        if upload_config:
             deployer.atomic_put_and_verify("/flash/config.yaml", config_file, "text/yaml", backup_dir)
-            print(f"Configuration profile: {args.config_profile}. Reboot and inspect the complete boot log before motion.")
+            label = f"custom file {display_path(config_file)}" if args.config_file else f"repository profile {config_profile}"
+            print(f"Configuration: {label}. Reboot and inspect the complete boot log before motion.")
         print(f"Open {base_url}/ and perform a hard refresh after an update.")
         print(f"Backups: {backup_dir}")
     except Exception as exc:
