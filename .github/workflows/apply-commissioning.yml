@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  workflow_run:
+    workflows: ['Проверка проекта']
+    types: [completed]
   issue_comment:
     types: [created]
   pull_request_target:
@@ -21,6 +24,7 @@ jobs:
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'agent/commissioning-profiles') ||
       (github.event_name == 'issue_comment' && github.event.issue.number == 6 && github.event.comment.body == '/apply-commissioning') ||
       (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'agent/commissioning-profiles')
     runs-on: ubuntu-latest
