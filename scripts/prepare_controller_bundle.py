@@ -31,6 +31,7 @@ def main() -> int:
     files = {
         ROOT / "firmware" / "fluidnc" / "config.yaml": BUNDLE / "config.yaml",
         ROOT / "firmware" / "fluidnc" / "config-production.yaml": BUNDLE / "config-production.yaml",
+        ROOT / "firmware" / "fluidnc" / "fluidnc-lock.json": BUNDLE / "fluidnc-lock.json",
         ROOT / "dist" / "index.html.gz": BUNDLE / "index.html.gz",
     }
     for source, target in files.items():

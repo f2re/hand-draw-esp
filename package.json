@@ -1,6 +1,6 @@
 {
   "name": "hand-draw-esp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "Автономный A4-плоттер на ESP32/FluidNC с профилями пишущих инструментов и безопасным WebUI",
@@ -19,7 +19,8 @@
     "test:browser": "python3 tests/browser_smoke.py",
     "firmware:prepare": "python3 scripts/install_fluidnc.py",
     "firmware:flash": "python3 scripts/install_fluidnc.py --flash",
-    "materialize": "python3 scripts/materialize_sources.py"
+    "materialize": "python3 scripts/materialize_sources.py",
+    "machine:apply": "python3 scripts/apply_machine_profile.py"
   },
   "engines": {
     "node": ">=20",

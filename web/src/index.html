@@ -252,6 +252,63 @@
 
         <details class="advanced-section machine-service">
           <summary>Ручное управление и диагностика</summary>
+
+          <section class="service-card machine-profile-card" aria-labelledby="machineProfileTitle">
+            <div class="service-card-heading">
+              <div><strong id="machineProfileTitle">Профиль конкретного станка</strong><p>Хранит положение листа, калибровку осей, диапазон пера и результаты аппаратной приёмки.</p></div>
+              <span id="machineProfileBadge" class="service-badge">Наладка 0/5</span>
+            </div>
+            <div class="form-grid">
+              <label class="field field-wide"><span>Сохранённый профиль</span><select id="machineProfileSelect"></select></label>
+              <label class="field field-wide"><span>Название профиля</span><input id="machineProfileName" type="text" maxlength="80" value="A4 · центрированный"></label>
+              <label class="field field-wide"><span>Комментарий</span><textarea id="machineProfileNotes" rows="2" placeholder="Например: ревизия платы, пружина, тип упора бумаги"></textarea></label>
+            </div>
+            <div class="secondary-actions profile-actions">
+              <button id="saveMachineProfileButton" type="button" class="button primary">Сохранить профиль</button>
+              <button id="deleteMachineProfileButton" type="button" class="button">Удалить</button>
+              <button id="exportMachineProfileButton" type="button" class="button">Экспорт</button>
+              <label class="button file-button">Импорт<input id="importMachineProfileInput" type="file" accept="application/json,.json,.handdraw-machine.json" hidden></label>
+            </div>
+          </section>
+
+          <section class="service-card commissioning-card" aria-labelledby="commissioningTitle">
+            <div class="service-card-heading">
+              <div><strong id="commissioningTitle">Первичная настройка</strong><p id="commissioningSummary">Проверьте направления, концевики и повторяемость homing.</p></div>
+            </div>
+            <dl class="diagnostic-grid">
+              <div><dt>FluidNC</dt><dd id="diagnosticFirmware">не опрошен</dd></div>
+              <div><dt>Конфигурация</dt><dd id="diagnosticConfig">не определён</dd></div>
+              <div><dt>SD-карта</dt><dd id="diagnosticSd">не опрошена</dd></div>
+            </dl>
+            <div class="secondary-actions">
+              <button id="controllerDiagnosticsButton" type="button" class="button">Опросить контроллер</button>
+              <button id="limitMonitorButton" type="button" class="button">Проверить концевики 8 с</button>
+            </div>
+            <div class="commissioning-checklist">
+              <label><input id="commissionDirectionX" type="checkbox"><span>X+ перемещает перо вправо на малом jog</span></label>
+              <label><input id="commissionDirectionY" type="checkbox"><span>Y+ перемещает перо в принятом направлении листа</span></label>
+              <label><input id="commissionLimitX" type="checkbox"><span>В режиме $Limits изменяется только вход X</span></label>
+              <label><input id="commissionLimitY" type="checkbox"><span>В режиме $Limits изменяется только вход Y</span></label>
+              <label><input id="commissionHomingRepeated" type="checkbox"><span>Три последовательных homing завершились без Alarm</span></label>
+            </div>
+
+            <details class="calibration-details">
+              <summary>Калибровка шагов на миллиметр</summary>
+              <div class="form-grid">
+                <label class="field"><span>Текущие X, шаг/мм</span><input id="stepsPerMmX" type="number" min="1" max="5000" step="0.0001" value="80"></label>
+                <label class="field"><span>Текущие Y, шаг/мм</span><input id="stepsPerMmY" type="number" min="1" max="5000" step="0.0001" value="80"></label>
+                <label class="field"><span>Задано, мм</span><input id="calibrationCommanded" type="number" min="10" max="300" step="1" value="100"></label>
+                <label class="field"><span>Измерено X, мм</span><input id="calibrationMeasuredX" type="number" min="1" max="400" step="0.01" placeholder="99.40"></label>
+                <label class="field"><span>Измерено Y, мм</span><input id="calibrationMeasuredY" type="number" min="1" max="400" step="0.01" placeholder="100.25"></label>
+              </div>
+              <p id="calibrationResult" class="hint">Формула: текущее значение × заданная длина / измеренная длина.</p>
+              <div class="secondary-actions">
+                <button id="calculateCalibrationButton" type="button" class="button primary">Рассчитать</button>
+                <button id="exportCalibrationButton" type="button" class="button">Скачать YAML-фрагмент</button>
+              </div>
+            </details>
+          </section>
+
           <div class="form-grid">
             <label class="field field-wide"><span>Адрес контроллера</span><input id="controllerAddress" type="text" placeholder="оставьте пустым при открытии с ESP32"></label>
             <label class="field"><span>Лист от нуля X, мм</span><input id="paperOffsetX" type="number" min="0" max="15" step="0.1" value="7.5" data-regenerate></label>

@@ -337,6 +337,24 @@ p { margin-block-start: 0; }
 .run-controls { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 8px; }
 .safety-line { margin: 10px 2px 0; color: var(--danger); font-size: .69rem; line-height: 1.42; }
 .machine-service { margin-top: 18px; }
+.service-card { margin: 13px 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.service-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.service-card-heading strong { display: block; font-size: .8rem; }
+.service-card-heading p { margin: 4px 0 0; color: var(--muted); font-size: .69rem; line-height: 1.4; }
+.service-badge { flex: 0 0 auto; max-width: 170px; padding: 6px 9px; border-radius: 999px; background: #e7e8e4; color: var(--muted); font-size: .63rem; font-weight: 760; text-align: center; }
+.service-badge.ready { background: var(--success-soft); color: var(--success); }
+.service-badge.warning { background: var(--warning-soft); color: #775018; }
+.diagnostic-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1px; margin: 0 0 12px; padding: 1px; overflow: hidden; border-radius: 11px; background: var(--line); }
+.diagnostic-grid div { min-width: 0; padding: 10px; background: var(--surface-muted); }
+.diagnostic-grid dt { color: var(--muted); font-size: .62rem; }
+.diagnostic-grid dd { margin: 4px 0 0; font-size: .7rem; font-weight: 700; overflow-wrap: anywhere; }
+.commissioning-checklist { display: grid; gap: 1px; margin-top: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--line); }
+.commissioning-checklist label { min-height: 39px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; background: var(--surface-muted); color: #394345; font-size: .69rem; line-height: 1.35; cursor: pointer; }
+.commissioning-checklist input { flex: 0 0 auto; }
+.calibration-details { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.calibration-details > summary { cursor: pointer; color: var(--text); font-size: .73rem; font-weight: 720; }
+.calibration-details[open] > summary { margin-bottom: 12px; }
+.profile-actions { flex-wrap: wrap; }
 .jog-pad { width: min(235px,100%); margin: 14px auto; display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
 .jog-pad .button { min-width: 0; padding-inline: 7px; }
 .machine-log { min-height: 105px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 12px; padding: 12px; border-radius: 11px; background: #20282a; color: #dce5e5; font: .7rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -420,6 +438,9 @@ p { margin-block-start: 0; }
   .profile-metrics { grid-template-columns: 1fr; }
   .raster-mode-grid { grid-template-columns: 1fr 1fr; }
   .machine-status-grid { grid-template-columns: 1fr 1fr; }
+  .diagnostic-grid { grid-template-columns: 1fr; }
+  .service-card-heading { align-items: stretch; flex-direction: column; }
+  .service-badge { max-width: none; align-self: flex-start; }
   .connection-block { align-items: flex-start; }
   .connection-buttons { flex-direction: column; }
   .ready-item { grid-template-columns: 29px minmax(0,1fr); }

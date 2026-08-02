@@ -1,6 +1,8 @@
 import {
   MACHINE_DEFAULTS,
   PAGE_PRESETS,
+  calculateCalibratedStepsPerMm,
+  createDefaultMachineProfile,
   TEXT_PRESETS,
   TOOL_PROFILES,
   analyzeJob,
@@ -17,6 +19,7 @@ import {
   rasterToContourPaths,
   rasterToHatchPaths,
   validateFont,
+  validateMachineProfile,
 } from './core.js';
 import { svgTextToPaths } from './svg-import.js';
 import { FluidNCClient, machineStateKind } from './fluidnc.js';
@@ -24,12 +27,14 @@ import { FluidNCClient, machineStateKind } from './fluidnc.js';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const FONT_STORAGE_KEY = 'handdraw-fonts-v1';
 const SETTINGS_STORAGE_KEY = 'handdraw-settings-v3';
+const MACHINE_PROFILE_STORAGE_KEY = 'handdraw-machine-profiles-v1';
+const DEFAULT_MACHINE_PROFILE_NAME = 'A4 · центрированный';
 const SETTINGS_IDS = [
   'fontSelect', 'fontSize', 'widthScale', 'letterSpacing', 'wordSpacing', 'lineHeight', 'lowercaseScale', 'slant', 'textJitter', 'heightJitter', 'seed', 'textAlign',
   'svgSampleStep', 'svgTolerance', 'imageThreshold', 'hatchSpacing', 'hatchAngle', 'contourStep', 'imageInvert',
   'pagePreset', 'marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'optimizePaths', 'showTravel',
   'drawFeed', 'travelFeed', 'penUp', 'penDown', 'penDownDwell', 'penUpDwell', 'strokeRepeats', 'returnHome', 'jobName',
-  'paperOffsetX', 'paperOffsetY', 'controllerAddress', 'jogDistance', 'jogFeed',
+  'paperOffsetX', 'paperOffsetY', 'stepsPerMmX', 'stepsPerMmY', 'controllerAddress', 'jogDistance', 'jogFeed',
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -70,6 +75,15 @@ const state = {
   uploadedJob: null,
   uploadedSignature: '',
   boundarySent: false,
+  machineProfiles: new Map(),
+  builtInMachineProfileNames: new Set(),
+  activeMachineProfileName: DEFAULT_MACHINE_PROFILE_NAME,
+  controllerDiagnostics: {
+    fluidncVersion: '',
+    buildSummary: '',
+    configFile: '',
+    sdStatus: '',
+  },
   machine: {
     homed: false,
     homingPending: false,
@@ -142,6 +156,261 @@ function saveFonts() {
   writeJsonStorage(FONT_STORAGE_KEY, custom);
 }
 
+function saveMachineProfiles() {
+  const custom = [...state.machineProfiles.entries()]
+    .filter(([name]) => !state.builtInMachineProfileNames.has(name))
+    .map(([, profile]) => profile);
+  writeJsonStorage(MACHINE_PROFILE_STORAGE_KEY, custom);
+}
+
+function refreshMachineProfileSelect(selectedName = state.activeMachineProfileName) {
+  const select = $('#machineProfileSelect');
+  if (!select) return;
+  select.textContent = '';
+  for (const [name] of state.machineProfiles) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = state.builtInMachineProfileNames.has(name) ? `${name} · номинальный` : name;
+    select.append(option);
+  }
+  if (state.machineProfiles.has(selectedName)) select.value = selectedName;
+  state.activeMachineProfileName = select.value || DEFAULT_MACHINE_PROFILE_NAME;
+}
+
+function loadMachineProfiles() {
+  state.machineProfiles.clear();
+  state.builtInMachineProfileNames.clear();
+  const nominal = createDefaultMachineProfile(DEFAULT_MACHINE_PROFILE_NAME);
+  state.machineProfiles.set(nominal.name, nominal);
+  state.builtInMachineProfileNames.add(nominal.name);
+  const saved = readJsonStorage(MACHINE_PROFILE_STORAGE_KEY, []);
+  if (Array.isArray(saved)) {
+    for (const source of saved) {
+      try {
+        const profile = validateMachineProfile(source);
+        if (!state.builtInMachineProfileNames.has(profile.name)) state.machineProfiles.set(profile.name, profile);
+      } catch { /* ignore damaged old profile */ }
+    }
+  }
+  refreshMachineProfileSelect();
+}
+
+function activeMachineProfile() {
+  return state.machineProfiles.get(state.activeMachineProfileName)
+    || state.machineProfiles.get(DEFAULT_MACHINE_PROFILE_NAME)
+    || createDefaultMachineProfile();
+}
+
+function diagnosticsLine(lines, fallback) {
+  const values = (Array.isArray(lines) ? lines : [lines]).map((line) => String(line ?? '').trim()).filter(Boolean);
+  return (values.find((line) => !/^ok$/i.test(line)) || fallback).slice(0, 240);
+}
+
+function commissioningSnapshot() {
+  return {
+    directionX: Boolean($('#commissionDirectionX')?.checked),
+    directionY: Boolean($('#commissionDirectionY')?.checked),
+    limitX: Boolean($('#commissionLimitX')?.checked),
+    limitY: Boolean($('#commissionLimitY')?.checked),
+    homingRepeated: Boolean($('#commissionHomingRepeated')?.checked),
+  };
+}
+
+function currentMachineProfile(name = $('#machineProfileName')?.value.trim() || 'Мой станок') {
+  const existing = activeMachineProfile();
+  return validateMachineProfile({
+    format: 'handdraw-machine-profile-v1',
+    name,
+    controller: {
+      board: existing.controller.board || 'MKS DLC32 V2.1',
+      fluidncVersion: state.controllerDiagnostics.fluidncVersion,
+      configFile: state.controllerDiagnostics.configFile,
+      sdStatus: state.controllerDiagnostics.sdStatus,
+    },
+    geometry: {
+      workWidth: MACHINE_DEFAULTS.workWidth,
+      workHeight: MACHINE_DEFAULTS.workHeight,
+      paperOffsetX: numberValue('#paperOffsetX', MACHINE_DEFAULTS.paperOffsetX),
+      paperOffsetY: numberValue('#paperOffsetY', MACHINE_DEFAULTS.paperOffsetY),
+      stepsPerMmX: numberValue('#stepsPerMmX', MACHINE_DEFAULTS.stepsPerMmX),
+      stepsPerMmY: numberValue('#stepsPerMmY', MACHINE_DEFAULTS.stepsPerMmY),
+    },
+    pen: {
+      servoMinZ: MACHINE_DEFAULTS.servoMinZ,
+      servoMaxZ: MACHINE_DEFAULTS.servoMaxZ,
+      penUp: numberValue('#penUp', MACHINE_DEFAULTS.servoMaxZ),
+      penDown: numberValue('#penDown', MACHINE_DEFAULTS.servoMinZ),
+    },
+    commissioning: commissioningSnapshot(),
+    notes: $('#machineProfileNotes')?.value || '',
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function updateCommissioningStatus() {
+  const checks = commissioningSnapshot();
+  const completed = Object.values(checks).filter(Boolean).length;
+  const version = state.controllerDiagnostics.fluidncVersion;
+  const versionCompatible = Boolean(version && version.startsWith(MACHINE_DEFAULTS.supportedFluidNCVersion));
+  const ready = completed === 5 && versionCompatible;
+  const badge = $('#machineProfileBadge');
+  if (badge) {
+    badge.classList.toggle('ready', ready);
+    badge.classList.toggle('warning', Boolean(version && !versionCompatible));
+    badge.textContent = ready ? 'Готов к рабочему профилю'
+      : version && !versionCompatible ? `FluidNC ${version} · проверить`
+        : `Наладка ${completed}/5`;
+  }
+  setMessage('#diagnosticFirmware', version || 'не опрошен');
+  setMessage('#diagnosticConfig', state.controllerDiagnostics.configFile || 'не определён');
+  setMessage('#diagnosticSd', state.controllerDiagnostics.sdStatus || 'не опрошена');
+  setMessage('#commissioningSummary', ready
+    ? 'Направления, концевики и повторный homing подтверждены. Можно использовать config-production.yaml.'
+    : `Подтверждено ${completed} из 5 аппаратных проверок. Рабочую конфигурацию пока не включайте.`);
+  if ($('#deleteMachineProfileButton')) $('#deleteMachineProfileButton').disabled = state.builtInMachineProfileNames.has(state.activeMachineProfileName);
+}
+
+function applyMachineProfile(name, options = {}) {
+  const profile = state.machineProfiles.get(name) || activeMachineProfile();
+  state.activeMachineProfileName = profile.name;
+  refreshMachineProfileSelect(profile.name);
+  setValue('#machineProfileName', profile.name);
+  setValue('#paperOffsetX', profile.geometry.paperOffsetX);
+  setValue('#paperOffsetY', profile.geometry.paperOffsetY);
+  setValue('#stepsPerMmX', profile.geometry.stepsPerMmX);
+  setValue('#stepsPerMmY', profile.geometry.stepsPerMmY);
+  setValue('#penUp', profile.pen.penUp);
+  setValue('#penDown', profile.pen.penDown);
+  setValue('#machineProfileNotes', profile.notes || '');
+  for (const [key, id] of Object.entries({
+    directionX: 'commissionDirectionX', directionY: 'commissionDirectionY',
+    limitX: 'commissionLimitX', limitY: 'commissionLimitY', homingRepeated: 'commissionHomingRepeated',
+  })) setValue(`#${id}`, profile.commissioning[key]);
+  state.controllerDiagnostics = {
+    fluidncVersion: profile.controller.fluidncVersion || '',
+    buildSummary: profile.controller.fluidncVersion ? `FluidNC ${profile.controller.fluidncVersion}` : '',
+    configFile: profile.controller.configFile || '',
+    sdStatus: profile.controller.sdStatus || '',
+  };
+  updateCommissioningStatus();
+  invalidateToolChecks();
+  if (options.persist !== false) saveSettings();
+  if (options.generate !== false) scheduleGenerate(30);
+}
+
+function saveCurrentMachineProfile() {
+  let requestedName = $('#machineProfileName').value.trim() || 'Мой станок';
+  if (state.builtInMachineProfileNames.has(requestedName)) requestedName = `${requestedName} · мой`;
+  const profile = currentMachineProfile(requestedName);
+  state.machineProfiles.set(profile.name, profile);
+  state.activeMachineProfileName = profile.name;
+  saveMachineProfiles();
+  refreshMachineProfileSelect(profile.name);
+  setValue('#machineProfileName', profile.name);
+  updateCommissioningStatus();
+  saveSettings();
+  logMachine(`Профиль станка «${profile.name}» сохранён.`);
+}
+
+function removeCurrentMachineProfile() {
+  const name = state.activeMachineProfileName;
+  if (state.builtInMachineProfileNames.has(name)) return logMachine('Номинальный профиль удалить нельзя.');
+  state.machineProfiles.delete(name);
+  saveMachineProfiles();
+  applyMachineProfile(DEFAULT_MACHINE_PROFILE_NAME);
+  logMachine(`Профиль «${name}» удалён.`);
+}
+
+function exportCurrentMachineProfile() {
+  const profile = currentMachineProfile(state.activeMachineProfileName);
+  const safeName = profile.name.replace(/[^0-9A-Za-zА-Яа-яЁё._-]+/g, '-');
+  downloadBlob(`${safeName}.handdraw-machine.json`, `${JSON.stringify(profile, null, 2)}\n`, 'application/json;charset=utf-8');
+}
+
+async function importMachineProfile(file) {
+  if (!file) return;
+  const profile = validateMachineProfile(JSON.parse(await file.text()));
+  const importedName = state.builtInMachineProfileNames.has(profile.name) ? `${profile.name} · импорт` : profile.name;
+  profile.name = importedName;
+  state.machineProfiles.set(profile.name, profile);
+  saveMachineProfiles();
+  applyMachineProfile(profile.name);
+  logMachine(`Импортирован профиль станка «${profile.name}».`);
+}
+
+function calculateMachineCalibration() {
+  const commanded = numberValue('#calibrationCommanded', 100);
+  const measuredX = numberValue('#calibrationMeasuredX', NaN);
+  const measuredY = numberValue('#calibrationMeasuredY', NaN);
+  const currentX = numberValue('#stepsPerMmX', MACHINE_DEFAULTS.stepsPerMmX);
+  const currentY = numberValue('#stepsPerMmY', MACHINE_DEFAULTS.stepsPerMmY);
+  const results = [];
+  if (Number.isFinite(measuredX) && measuredX > 0) {
+    const next = calculateCalibratedStepsPerMm(currentX, commanded, measuredX);
+    setValue('#stepsPerMmX', next.toFixed(4));
+    results.push(`X ${next.toFixed(4)}`);
+  }
+  if (Number.isFinite(measuredY) && measuredY > 0) {
+    const next = calculateCalibratedStepsPerMm(currentY, commanded, measuredY);
+    setValue('#stepsPerMmY', next.toFixed(4));
+    results.push(`Y ${next.toFixed(4)}`);
+  }
+  if (!results.length) throw new Error('Введите измеренную длину хотя бы для одной оси.');
+  setMessage('#calibrationResult', `Новые значения steps/mm: ${results.join(' · ')}.`);
+  logMachine(`Калибровка рассчитана: ${results.join(', ')}.`);
+}
+
+function exportCalibrationFragment() {
+  const profile = currentMachineProfile(state.activeMachineProfileName);
+  const yaml = [
+    '# HandDraw ESP — перенесите значения в обе конфигурации после контрольного измерения',
+    'axes:',
+    '  x:',
+    `    steps_per_mm: ${profile.geometry.stepsPerMmX.toFixed(4)}`,
+    '  y:',
+    `    steps_per_mm: ${profile.geometry.stepsPerMmY.toFixed(4)}`,
+    '',
+  ].join('\n');
+  downloadBlob('handdraw-steps-calibration.yaml', yaml, 'text/yaml;charset=utf-8');
+}
+
+async function runControllerDiagnostics() {
+  const button = $('#controllerDiagnosticsButton');
+  button.disabled = true;
+  button.textContent = 'Опрос…';
+  try {
+    const result = await ensureClient().queryDiagnostics();
+    state.controllerDiagnostics = {
+      fluidncVersion: result.build.version,
+      buildSummary: result.build.summary,
+      configFile: diagnosticsLine(result.configLines, 'не определён'),
+      sdStatus: diagnosticsLine(result.sdLines, 'нет ответа'),
+    };
+    logMachine(result.build.summary || 'Контроллер ответил на $I.');
+    logMachine(`Конфигурация: ${state.controllerDiagnostics.configFile}.`);
+    logMachine(`SD: ${state.controllerDiagnostics.sdStatus}.`);
+    updateCommissioningStatus();
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Опросить контроллер';
+  }
+}
+
+async function runLimitMonitor() {
+  const button = $('#limitMonitorButton');
+  button.disabled = true;
+  button.textContent = 'Нажимайте концевики…';
+  logMachine('Диагностика $Limits запущена на 8 секунд. Поочерёдно нажмите X и Y.');
+  try {
+    const lines = await ensureClient().monitorLimits(8000);
+    if (lines.length) logMachine(`$Limits: ${lines.join(' | ')}`);
+    else logMachine('$Limits завершён. Сверьте изменения входов по журналу FluidNC.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Проверить концевики 8 с';
+  }
+}
+
 function saveSettings() {
   const controls = {};
   for (const id of SETTINGS_IDS) {
@@ -154,6 +423,7 @@ function saveSettings() {
     source: state.source,
     toolProfileId: state.toolProfileId,
     textPresetId: state.textPresetId,
+    machineProfileName: state.activeMachineProfileName,
     rasterMode: $('input[name="rasterMode"]:checked')?.value || 'hatch',
     controls,
   });
@@ -317,6 +587,7 @@ function selectRasterMode(mode) {
 
 function applyToolProfile(profileId, options = {}) {
   const profile = getToolProfile(profileId);
+  const machineProfile = activeMachineProfile();
   state.toolProfileId = profile.id;
   const radio = $(`input[name="toolProfile"][value="${profile.id}"]`);
   if (radio) radio.checked = true;
@@ -324,8 +595,8 @@ function applyToolProfile(profileId, options = {}) {
     setValue('#drawFeed', profile.drawFeed);
     setValue('#travelFeed', profile.travelFeed);
     setValue('#jogFeed', profile.jogFeed);
-    setValue('#penUp', profile.penUp);
-    setValue('#penDown', profile.penDown);
+    setValue('#penUp', machineProfile.pen.penUp);
+    setValue('#penDown', machineProfile.pen.penDown);
     setValue('#penDownDwell', profile.penDownDwell);
     setValue('#penUpDwell', profile.penUpDwell);
     setValue('#strokeRepeats', profile.strokeRepeats);
@@ -356,6 +627,8 @@ function restoreSettings() {
   applyToolProfile(profileId, { generate: false, persist: false, textPreset: false });
   const defaultTextPreset = saved?.textPresetId && TEXT_PRESETS[saved.textPresetId] ? saved.textPresetId : TOOL_PROFILES[profileId].textDefaults.preset;
   applyTextPreset(defaultTextPreset, { generate: false, persist: false });
+  const machineProfileName = state.machineProfiles.has(saved?.machineProfileName) ? saved.machineProfileName : DEFAULT_MACHINE_PROFILE_NAME;
+  applyMachineProfile(machineProfileName, { generate: false, persist: false });
   if (saved?.controls && typeof saved.controls === 'object') {
     for (const [id, value] of Object.entries(saved.controls)) setValue(`#${id}`, value);
   }
@@ -364,16 +637,18 @@ function restoreSettings() {
   activateSource(state.source, { generate: false, persist: false });
   updateThresholdOutput();
   updateProfileSummaryFromControls();
+  updateCommissioningStatus();
 }
 
 function machinePlacementOptions() {
+  const machineProfile = activeMachineProfile();
   return {
-    paperOffsetX: numberValue('#paperOffsetX', MACHINE_DEFAULTS.paperOffsetX),
-    paperOffsetY: numberValue('#paperOffsetY', MACHINE_DEFAULTS.paperOffsetY),
-    workWidth: MACHINE_DEFAULTS.workWidth,
-    workHeight: MACHINE_DEFAULTS.workHeight,
-    servoMinZ: MACHINE_DEFAULTS.servoMinZ,
-    servoMaxZ: MACHINE_DEFAULTS.servoMaxZ,
+    paperOffsetX: numberValue('#paperOffsetX', machineProfile.geometry.paperOffsetX),
+    paperOffsetY: numberValue('#paperOffsetY', machineProfile.geometry.paperOffsetY),
+    workWidth: machineProfile.geometry.workWidth,
+    workHeight: machineProfile.geometry.workHeight,
+    servoMinZ: machineProfile.pen.servoMinZ,
+    servoMaxZ: machineProfile.pen.servoMaxZ,
     machineFeedLimit: MACHINE_DEFAULTS.machineFeedLimit,
   };
 }
@@ -1051,6 +1326,8 @@ function updateReadiness() {
   const statusKind = machineStateKind(state.client?.status);
   $('#downloadGcodeButton').disabled = !ready.layout;
   $('#homeButton').disabled = !ready.connected || statusKind === 'motion';
+  $('#controllerDiagnosticsButton').disabled = !ready.idle;
+  $('#limitMonitorButton').disabled = !ready.idle;
   $('#penTestButton').disabled = !ready.idle || !ready.homed;
   $('#dryRunButton').disabled = !ready.idle || !ready.homed || !ready.paper || !ready.layout;
   $('#uploadButton').disabled = !ready.idle || !ready.homed || !ready.pen || !ready.paper || !ready.boundary || !ready.layout;
@@ -1237,6 +1514,30 @@ function bindEvents() {
   $('#jogDistance').addEventListener('change', saveSettings);
   $('#jogFeed').addEventListener('change', saveSettings);
 
+  $('#machineProfileSelect').addEventListener('change', (event) => applyMachineProfile(event.target.value));
+  $('#saveMachineProfileButton').addEventListener('click', () => {
+    try { saveCurrentMachineProfile(); } catch (error) { logMachine(error.message); }
+  });
+  $('#deleteMachineProfileButton').addEventListener('click', removeCurrentMachineProfile);
+  $('#exportMachineProfileButton').addEventListener('click', () => {
+    try { exportCurrentMachineProfile(); } catch (error) { logMachine(error.message); }
+  });
+  $('#importMachineProfileInput').addEventListener('change', (event) => {
+    importMachineProfile(event.target.files?.[0]).catch((error) => logMachine(`Импорт профиля: ${error.message}`));
+    event.target.value = '';
+  });
+  for (const id of ['commissionDirectionX', 'commissionDirectionY', 'commissionLimitX', 'commissionLimitY', 'commissionHomingRepeated']) {
+    $(`#${id}`).addEventListener('change', updateCommissioningStatus);
+  }
+  $('#controllerDiagnosticsButton').addEventListener('click', () => runControllerDiagnostics().catch((error) => logMachine(`Диагностика: ${error.message}`)));
+  $('#limitMonitorButton').addEventListener('click', () => runLimitMonitor().catch((error) => logMachine(`Концевики: ${error.message}`)));
+  $('#calculateCalibrationButton').addEventListener('click', () => {
+    try { calculateMachineCalibration(); } catch (error) { logMachine(`Калибровка: ${error.message}`); }
+  });
+  $('#exportCalibrationButton').addEventListener('click', () => {
+    try { exportCalibrationFragment(); } catch (error) { logMachine(`Калибровка: ${error.message}`); }
+  });
+
   const canvas = $('#glyphBoard');
   canvas.addEventListener('pointerdown', startGlyphStroke);
   canvas.addEventListener('pointermove', extendGlyphStroke);
@@ -1336,6 +1637,7 @@ async function init() {
         try { addFont(saved); } catch { /* ignore invalid old user font */ }
       }
     }
+    loadMachineProfiles();
     populateTextPresets();
     populateToolProfiles();
     bindEvents();

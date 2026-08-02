@@ -52,6 +52,12 @@ def validate_config() -> None:
     for axis_name in ("x", "y"):
         if production["axes"][axis_name]["motor0"].get("hard_limits") is not True:
             fail(f"production config must enable {axis_name.upper()} hard limits")
+    lock = json.loads((ROOT / "firmware" / "fluidnc" / "fluidnc-lock.json").read_text(encoding="utf-8"))
+    if lock.get("format") != "handdraw-fluidnc-lock-v1" or lock.get("tag") != "v4.0.3":
+        fail("FluidNC lock is missing or unexpected")
+    installer = (ROOT / "scripts" / "install_fluidnc.py").read_text(encoding="utf-8")
+    if "fluidnc-lock.json" not in installer or "args.latest" not in installer:
+        fail("FluidNC installer does not default to the pinned release")
 
 
 def validate_bom() -> None:
@@ -230,14 +236,23 @@ def validate_operator_ui() -> None:
             fail(f"motion/media logic lost required token: {token}")
     if "G0 X" in core or "G0 Y" in core:
         fail("XY travel must use feed-controlled G1 rather than rapid G0")
-    for token in ("readyHomed", "confirmPenTest", "confirmBoundary", "confirmSupervision"):
+    for token in (
+        "readyHomed", "confirmPenTest", "confirmBoundary", "confirmSupervision",
+        "machineProfileSelect", "controllerDiagnosticsButton", "commissionHomingRepeated", "stepsPerMmX",
+    ):
         if token not in html:
             fail(f"operator preflight lost required control: {token}")
     if html.count('role="tab"') < 8 or html.count('role="tabpanel"') < 8:
         fail("operator navigation lacks tab/tabpanel semantics")
     if "bindRovingTabs" not in app or "Object.values(ready).every(Boolean)" not in app:
         fail("keyboard navigation or launch gate is missing")
-    for token in ("safeJobFileName", "byte-for-byte", "moveFile", "commandQueue", "finishActiveCommand"):
+    for token in ("validateMachineProfile", "runControllerDiagnostics", "calculateMachineCalibration", "MACHINE_PROFILE_STORAGE_KEY"):
+        if token not in app:
+            fail(f"commissioning workflow is missing: {token}")
+    for token in (
+        "safeJobFileName", "byte-for-byte", "moveFile", "commandQueue", "finishActiveCommand",
+        "queryDiagnostics", "monitorLimits", "parseControllerBuildInfo",
+    ):
         if token not in fluidnc:
             fail(f"FluidNC reliability feature is missing: {token}")
     svg_import = (ROOT / "web/src/svg-import.js").read_text(encoding="utf-8")
@@ -258,6 +273,7 @@ def validate_docs() -> None:
         "docs/FIRMWARE_AND_GCODE.md",
         "docs/ART_DIRECTION.md",
         "docs/CALIBRATION.md",
+        "docs/COMMISSIONING.md",
         "docs/SOURCES.md",
         "docs/START_HERE.md",
         "docs/CAD_REWORK_PLAN.md",
@@ -274,9 +290,11 @@ def validate_docs() -> None:
         "hardware/cad/plotter_parts.scad",
         "firmware/fluidnc/INSTALL.md",
         "firmware/fluidnc/config-production.yaml",
+        "firmware/fluidnc/fluidnc-lock.json",
         "scripts/setup_project.py",
         "scripts/prepare_controller_bundle.py",
         "scripts/install_fluidnc.py",
+        "scripts/apply_machine_profile.py",
         "scripts/validate_cad.py",
         ".github/workflows/release.yml",
     ]

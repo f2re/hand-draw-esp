@@ -16,10 +16,12 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-API_URL = "https://api.github.com/repos/bdring/FluidNC/releases/latest"
-USER_AGENT = "handdraw-esp-fluidnc-installer/1"
+API_ROOT = "https://api.github.com/repos/bdring/FluidNC/releases"
+LATEST_API_URL = f"{API_ROOT}/latest"
+USER_AGENT = "handdraw-esp-fluidnc-installer/2"
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CACHE = ROOT / ".cache" / "fluidnc"
+LOCK_FILE = ROOT / "firmware" / "fluidnc" / "fluidnc-lock.json"
 
 
 def sha256(path: Path) -> str:
@@ -28,6 +30,18 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def load_lock(path: Path = LOCK_FILE) -> dict[str, Any]:
+    try:
+        lock = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Cannot read FluidNC lock file {path}: {exc}") from exc
+    if lock.get("format") != "handdraw-fluidnc-lock-v1":
+        raise RuntimeError("Unsupported FluidNC lock format")
+    if not str(lock.get("tag", "")).startswith("v") or not str(lock.get("release_api", "")).startswith("https://"):
+        raise RuntimeError("FluidNC lock lacks a valid tag or release API URL")
+    return lock
 
 
 def request_json(url: str) -> dict[str, Any]:
@@ -110,20 +124,30 @@ def confirm(message: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Download an official FluidNC release and optionally flash MKS DLC32 V2.1")
+    parser = argparse.ArgumentParser(description="Download the pinned official FluidNC release and optionally flash MKS DLC32 V2.1")
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
-    parser.add_argument("--metadata", help="override GitHub releases API URL")
+    release_group = parser.add_mutually_exclusive_group()
+    release_group.add_argument("--metadata", help="override GitHub release metadata URL")
+    release_group.add_argument("--tag", help="explicit FluidNC tag, for example v4.0.3")
+    release_group.add_argument("--latest", action="store_true", help="explicitly use the current upstream latest release instead of the lock")
     parser.add_argument("--bundle", type=Path, help="use an already downloaded official release ZIP")
     parser.add_argument("--list-assets", action="store_true")
+    parser.add_argument("--show-lock", action="store_true")
     parser.add_argument("--flash", action="store_true")
     parser.add_argument("--erase", action="store_true")
     parser.add_argument("--install-fs", action="store_true")
     parser.add_argument("--yes", action="store_true")
     args = parser.parse_args()
 
+    lock = load_lock()
+    if args.show_lock:
+        print(json.dumps(lock, ensure_ascii=False, indent=2))
+        return 0
+
     cache = args.cache.expanduser().resolve()
     cache.mkdir(parents=True, exist_ok=True)
     asset: dict[str, Any] | None = None
+    expected_tag: str | None = None
 
     if args.bundle:
         archive = args.bundle.expanduser().resolve()
@@ -131,11 +155,25 @@ def main() -> int:
             raise SystemExit(f"Bundle not found: {archive}")
         tag, asset_name, asset_url = "local", archive.name, str(archive)
     else:
-        release = request_json(args.metadata or API_URL)
+        if args.metadata:
+            metadata_url = args.metadata
+        elif args.latest:
+            metadata_url = LATEST_API_URL
+        elif args.tag:
+            expected_tag = args.tag
+            metadata_url = f"{API_ROOT}/tags/{args.tag}"
+        else:
+            expected_tag = str(lock["tag"])
+            metadata_url = str(lock["release_api"])
+        release = request_json(metadata_url)
         tag = str(release.get("tag_name") or "unknown")
+        if expected_tag and tag != expected_tag:
+            raise SystemExit(f"FluidNC release mismatch: requested {expected_tag}, metadata returned {tag}")
         if args.list_assets:
+            print(f"Release: {tag} ({metadata_url})")
             for item in release.get("assets", []):
-                print(item.get("name"), item.get("browser_download_url"))
+                digest = item.get("digest") or ""
+                print(item.get("name"), digest, item.get("browser_download_url"))
             return 0
         asset = choose_asset(release)
         asset_name = str(asset["name"])
@@ -164,7 +202,12 @@ def main() -> int:
 
     _, install_name, erase_name, fs_name = platform_profile()
     install_script = find_script(extract_dir, install_name)
-    print(f"FluidNC release: {tag}\nBundle: {archive}\nSHA-256: {digest}\nExtracted to: {extract_dir}")
+    release_mode = "local bundle" if args.bundle else "explicit latest" if args.latest else "explicit tag" if args.tag else "locked release"
+    print(
+        f"FluidNC release: {tag} ({release_mode})\n"
+        f"Lock: {LOCK_FILE} -> {lock['tag']}\n"
+        f"Bundle: {archive}\nSHA-256: {digest}\nExtracted to: {extract_dir}"
+    )
 
     if not args.flash and not args.erase and not args.install_fs:
         print("Preparation complete. Add --flash to run the official installer.")

@@ -44,7 +44,9 @@
 - проверенная запись задания на SD-карту FluidNC с обратным чтением;
 - запуск только после homing, теста пера, крепления листа и обводки рамки;
 - пауза, продолжение, останов, jog и управление пером;
-- отображение координат, состояния и процента выполнения.
+- отображение координат, состояния и процента выполнения;
+- профили конкретных экземпляров станка с экспортом/импортом;
+- мастер первичной настройки: версия FluidNC, SD-карта, концевики, направления и калибровка steps/mm.
 
 ![Схема веб-интерфейса HandDraw ESP](docs/images/web-ui.svg)
 
@@ -191,14 +193,21 @@ CHROMIUM_PATH=/usr/bin/chromium python3 tests/browser_smoke.py
 
 ## Прошивка FluidNC
 
-Репозиторий не хранит сторонние бинарные файлы FluidNC. Помощник получает официальный пакет и делегирует прошивку штатному установщику:
+Репозиторий не хранит сторонние бинарные файлы FluidNC. Проверенная версия закреплена в `firmware/fluidnc/fluidnc-lock.json`; помощник получает официальный пакет этого выпуска и делегирует прошивку штатному установщику:
 
 ```bash
 # Скачать и распаковать пакет
 python3 scripts/install_fluidnc.py
 
-# Показать доступные файлы выпуска
+# Показать закреплённую версию
+python3 scripts/install_fluidnc.py --show-lock
+
+# Показать доступные файлы закреплённого выпуска
 python3 scripts/install_fluidnc.py --list-assets
+
+# Явно проверить другой тег или upstream latest
+python3 scripts/install_fluidnc.py --tag v4.0.3
+python3 scripts/install_fluidnc.py --latest
 
 # Запустить официальный Wi-Fi-установщик
 python3 scripts/install_fluidnc.py --flash
@@ -224,6 +233,16 @@ python3 scripts/deploy_webui.py 192.168.1.50 --with-config --config-profile prod
 ```
 
 Сценарий создаёт `dist/index.html.gz`, сохраняет предыдущие файлы в `backups/`, выполняет проверенную временную загрузку и откатывает замену при ошибке.
+
+Профиль станка, экспортированный из WebUI, можно превратить в две готовые YAML-конфигурации:
+
+```bash
+python3 scripts/apply_machine_profile.py HandDraw-No1.handdraw-machine.json
+
+# Загрузить сгенерированную наладочную конфигурацию
+python3 scripts/deploy_webui.py handdraw.local \
+  --config-file build/machine-config/HandDraw-No1/config-commissioning.yaml
+```
 
 ## Порядок аппаратной реализации
 
@@ -252,6 +271,7 @@ python3 scripts/deploy_webui.py 192.168.1.50 --with-config --config-profile prod
 - [интерфейс оператора](docs/WEB_INTERFACE.md);
 - [прошивка и G-code](docs/FIRMWARE_AND_GCODE.md);
 - [арт-направление](docs/ART_DIRECTION.md);
+- [первичная настройка](docs/COMMISSIONING.md);
 - [калибровка](docs/CALIBRATION.md);
 - [безопасность](docs/SAFETY.md).
 

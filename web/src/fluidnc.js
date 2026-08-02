@@ -120,6 +120,19 @@ export function safeJobFileName(value = 'handdraw-job.gcode') {
   return base.toLowerCase().endsWith('.gcode') ? base : `${base}.gcode`;
 }
 
+
+export function parseControllerBuildInfo(lines) {
+  const values = (Array.isArray(lines) ? lines : [lines]).map((line) => String(line ?? '').trim()).filter(Boolean);
+  const text = values.join('\n');
+  const versionMatch = /FluidNC\s+v?([0-9]+(?:\.[0-9]+){1,3}(?:[-+._A-Za-z0-9]*)?)/i.exec(text)
+    || /\[VER:[^\]]*?([0-9]+(?:\.[0-9]+){1,3}(?:[-+._A-Za-z0-9]*)?)/i.exec(text);
+  return {
+    version: versionMatch?.[1] ?? '',
+    summary: values.find((line) => /FluidNC|\[VER:/i.test(line)) ?? values[0] ?? '',
+    lines: values,
+  };
+}
+
 function encodeCommand(command) {
   return new TextEncoder().encode(`${command}\n`);
 }
@@ -169,6 +182,7 @@ export class FluidNCClient extends EventTarget {
     this.autoReconnect = options.autoReconnect !== false;
     this.commandQueue = [];
     this.activeCommand = null;
+    this.exclusiveMode = false;
   }
 
   setBaseUrl(value) {
@@ -246,6 +260,7 @@ export class FluidNCClient extends EventTarget {
       this.dispatchEvent(new CustomEvent('message', { detail: line }));
       return;
     }
+    if (this.activeCommand) this.activeCommand.lines.push(line);
     this.dispatchEvent(new CustomEvent('message', { detail: line }));
   }
 
@@ -267,6 +282,7 @@ export class FluidNCClient extends EventTarget {
 
   ensureIdle() {
     this.ensureConnected();
+    if (this.exclusiveMode) throw new Error('FluidNC находится в диагностическом режиме.');
     if (this.activeCommand || this.commandQueue.length) throw new Error('FluidNC ещё подтверждает предыдущую команду.');
     if (machineStateKind(this.status) !== 'idle') throw new Error(`Станок занят: ${this.status.state}.`);
   }
@@ -282,7 +298,7 @@ export class FluidNCClient extends EventTarget {
     this.ensureConnected();
     const timeoutMs = Math.max(1000, Number(options.timeoutMs ?? this.commandTimeoutMs));
     return new Promise((resolve, reject) => {
-      this.commandQueue.push({ command: value, timeoutMs, resolve, reject, timer: null });
+      this.commandQueue.push({ command: value, timeoutMs, resolve, reject, timer: null, lines: [] });
       this.pumpCommandQueue();
     });
   }
@@ -320,7 +336,7 @@ export class FluidNCClient extends EventTarget {
       entry.reject(error);
       this.dispatchEvent(new CustomEvent('error', { detail: error }));
     } else {
-      entry.resolve({ command: entry.command, response });
+      entry.resolve({ command: entry.command, response, lines: [...entry.lines] });
     }
     queueMicrotask(() => this.pumpCommandQueue());
   }
@@ -392,7 +408,7 @@ export class FluidNCClient extends EventTarget {
       headers: { Destination: destination, Overwrite: 'T' },
       credentials: 'same-origin',
     });
-    if ([405, 501].includes(response.status)) return false;
+    if ([400, 403, 405, 409, 501].includes(response.status)) return false;
     if (!response.ok) throw new Error(`Не удалось завершить атомарную запись: HTTP ${response.status}.`);
     return true;
   }
@@ -433,6 +449,37 @@ export class FluidNCClient extends EventTarget {
     this.ensureIdle();
     const normalized = normalizeJobPath(path, storage);
     return this.sendCommand(storage === 'local' ? `$LocalFS/Run=${normalized}` : `$SD/Run=${normalized}`);
+  }
+
+  async queryDiagnostics() {
+    this.ensureIdle();
+    const build = await this.sendCommand('$I');
+    const config = await this.sendCommand('$Config/Filename');
+    const sd = await this.sendCommand('$ESP200');
+    return {
+      build: parseControllerBuildInfo(build.lines),
+      configLines: config.lines,
+      sdLines: sd.lines,
+    };
+  }
+
+  async monitorLimits(durationMs = 8000) {
+    this.ensureIdle();
+    const duration = Math.max(2000, Math.min(30000, Number(durationMs) || 8000));
+    const lines = [];
+    const listener = (event) => lines.push(String(event.detail ?? ''));
+    this.exclusiveMode = true;
+    this.addEventListener('message', listener);
+    try {
+      this.websocket.send(encodeCommand('$Limits'));
+      await new Promise((resolve) => setTimeout(resolve, duration));
+      this.sendRealtime('!');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return lines.filter(Boolean);
+    } finally {
+      this.removeEventListener('message', listener);
+      this.exclusiveMode = false;
+    }
   }
 
   pause() { this.sendRealtime('!'); }

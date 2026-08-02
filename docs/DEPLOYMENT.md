@@ -10,7 +10,7 @@
 - оставить ручку снятой;
 - механически отвести каретки от упоров.
 
-FluidNC устанавливается из официального release bundle. Краткий порядок:
+FluidNC устанавливается из официального release bundle, закреплённого в `firmware/fluidnc/fluidnc-lock.json`. Краткий порядок:
 
 - Linux/POSIX: `sh install-wifi.sh`; при неизвестной старой прошивке сначала `sh erase.sh`; `sh install-fs.sh` применяется только для первой чистой установки или осознанного стирания local filesystem.
 - Windows x64: `install-wifi.bat`; при необходимости `erase.bat`; для первой чистой файловой системы — `install-fs.bat`.
@@ -102,3 +102,19 @@ python3 scripts/deploy_webui.py handdraw.local \
 4. Выполнить тест пера и рамку с поднятым инструментом через мастер WebUI, затем квадрат 100 × 100 мм.
 5. Проверить, что SD-файл запускается именно командой `$SD/Run=/jobs/имя.gcode`.
 6. Не обновлять страницу при `Run`, `Jog` или `Hold`.
+
+
+## Закреплённая версия FluidNC
+
+`scripts/install_fluidnc.py` читает `firmware/fluidnc/fluidnc-lock.json` и по умолчанию не обращается к `releases/latest`. Команды `--tag` и `--latest` считаются явным отклонением от проверенного набора. Перед обновлением lock-файла необходимо прогнать конфигурацию на реальной MKS DLC32 и сохранить резервную копию flash.
+
+
+## Конфигурация из профиля станка
+
+```bash
+python3 scripts/apply_machine_profile.py machine.handdraw-machine.json
+python3 scripts/deploy_webui.py handdraw.local \
+  --config-file build/machine-config/<имя>/config-commissioning.yaml
+```
+
+`--config-file` автоматически включает передачу YAML. Перед заменой контроллерная версия сохраняется в `backups/`, как и при использовании `--config-profile`.
