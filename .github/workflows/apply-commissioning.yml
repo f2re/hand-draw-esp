@@ -1,6 +1,9 @@
 name: Apply commissioning profiles implementation
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   pull_request_target:
     types: [edited, reopened, synchronize, ready_for_review]
 
@@ -8,18 +11,18 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-commissioning-${{ github.event.pull_request.number }}
+  group: apply-commissioning-profiles
   cancel-in-progress: false
 
 jobs:
   apply:
-    if: github.event.pull_request.head.ref == 'agent/commissioning-profiles'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'agent/commissioning-profiles'
     runs-on: ubuntu-latest
     steps:
-      - name: Получить рабочую ветку PR
+      - name: Получить рабочую ветку
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: agent/commissioning-profiles
           fetch-depth: 0
           token: ${{ github.token }}
 
@@ -32,9 +35,15 @@ jobs:
           python-version: '3.12'
 
       - name: Применить пакет разработки
+        id: apply
         shell: bash
         run: |
           set -euo pipefail
+          if [ ! -f .commissioning-overlay/ready ]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Пакет уже применён.'
+            exit 0
+          fi
           test "$(find .commissioning-overlay -maxdepth 1 -name 'part-*' -type f | wc -l)" -eq 5
           cat .commissioning-overlay/part-* > /tmp/commissioning.patch.gz.b64
           base64 --decode /tmp/commissioning.patch.gz.b64 > /tmp/commissioning.patch.gz
@@ -43,14 +52,17 @@ jobs:
           git apply --check /tmp/commissioning.patch
           git apply /tmp/commissioning.patch
           rm -rf .commissioning-overlay
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
 
       - name: Проверить сборку
+        if: steps.apply.outputs.changed == 'true'
         run: |
           python -m pip install --disable-pip-version-check -r requirements-dev.txt
           npm test
           python -m py_compile scripts/*.py tests/*.py
 
       - name: Зафиксировать реализацию
+        if: steps.apply.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -59,4 +71,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m 'feat: add commissioning profiles and pin FluidNC'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:agent/commissioning-profiles
