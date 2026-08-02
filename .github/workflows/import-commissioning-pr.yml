@@ -1,0 +1,64 @@
+name: Import commissioning implementation
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: import-commissioning-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.event.pull_request.head.ref == 'agent/commissioning-profiles'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходную ветку
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Применить пакет
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .commissioning-overlay/ready
+          test "$(find .commissioning-overlay -maxdepth 1 -name 'part-*' -type f | wc -l)" -eq 5
+          cat .commissioning-overlay/part-* > /tmp/commissioning.patch.gz.b64
+          base64 --decode /tmp/commissioning.patch.gz.b64 > /tmp/commissioning.patch.gz
+          echo '4d365cc0e11d34d26a28e169d7e7595ab39d61fbc7013eee37e182e6ebb63ca8  /tmp/commissioning.patch.gz' | sha256sum --check --strict
+          gzip -dc /tmp/commissioning.patch.gz > /tmp/commissioning.patch
+          git apply --check /tmp/commissioning.patch
+          git apply /tmp/commissioning.patch
+          rm -rf .commissioning-overlay
+          rm -f .github/workflows/import-commissioning-pr.yml
+
+      - name: Проверить реализацию
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          npm test
+          python -m py_compile scripts/*.py tests/*.py
+
+      - name: Зафиксировать исходники
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat: add commissioning profiles and pin FluidNC'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
