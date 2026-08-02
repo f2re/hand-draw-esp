@@ -1,0 +1,147 @@
+# ESP32 A4 Pen Plotter — verified production FluidNC profile
+# Target board: Makerbase MKS DLC32 V2.1
+# Mechanics: Cartesian XY, GT2 20T, 1.8-degree motors, 1/16 microstepping
+# Pen lift: RC servo connected to the board's TTL/PWM signal (GPIO32)
+# IMPORTANT: the servo red wire is powered by an external regulated 5.0 V supply.
+# Only the signal and common GND are shared with the controller.
+# Use only after limit polarity, direction and repeated homing have been physically verified.
+# Motion limits remain conservative; hard limits and mandatory homing are enabled.
+# Tool-specific drawing/travel speeds are lower and are selected by HandDraw WebUI.
+
+board: MKS-DLC32 V2.1
+name: ESP32 A4 Pen Plotter Production
+
+kinematics:
+  Cartesian:
+
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 255
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+
+axes:
+  shared_stepper_disable_pin: I2SO.0
+
+  x:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 4800.000
+    acceleration_mm_per_sec2: 180.000
+    max_travel_mm: 225.000
+    soft_limits: true
+    homing:
+      cycle: 2
+      positive_direction: false
+      mpos_mm: 0.000
+      feed_mm_per_min: 300.000
+      seek_mm_per_min: 1800.000
+      settle_ms: 300
+      seek_scaler: 1.100
+      feed_scaler: 1.100
+    motor0:
+      # The MKS board has external input circuitry; this is active-high.
+      # For an opposite electrical state, change to gpio.36:low after checking $Limits.
+      limit_neg_pin: gpio.36
+      hard_limits: true
+      pulloff_mm: 3.000
+      stepstick:
+        step_pin: I2SO.1
+        direction_pin: I2SO.2
+
+  y:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 4200.000
+    acceleration_mm_per_sec2: 140.000
+    max_travel_mm: 315.000
+    soft_limits: true
+    homing:
+      cycle: 1
+      positive_direction: false
+      mpos_mm: 0.000
+      feed_mm_per_min: 300.000
+      seek_mm_per_min: 1800.000
+      settle_ms: 300
+      seek_scaler: 1.100
+      feed_scaler: 1.100
+    motor0:
+      # For an opposite electrical state, change to gpio.35:low after checking $Limits.
+      limit_neg_pin: gpio.35
+      hard_limits: true
+      pulloff_mm: 3.000
+      stepstick:
+        step_pin: I2SO.5
+        direction_pin: I2SO.6:low
+
+  # FluidNC maps the commanded Z coordinate over max_travel to the servo pulse range.
+  # With this file: G0 Z5 = pen up, G0 Z0 = pen down.
+  # Mount the servo horn so that both endpoints remain clear of mechanical stops.
+  z:
+    steps_per_mm: 1.000
+    max_rate_mm_per_min: 240.000
+    acceleration_mm_per_sec2: 80.000
+    max_travel_mm: 5.000
+    soft_limits: false
+    motor0:
+      rc_servo:
+        pwm_hz: 50
+        output_pin: gpio.32
+        min_pulse_us: 1000
+        max_pulse_us: 2000
+
+# MKS DLC32 V2.1 I2S expander pin map.
+i2so:
+  bck_pin: gpio.16
+  data_pin: gpio.21
+  ws_pin: gpio.17
+
+spi:
+  miso_pin: gpio.12
+  mosi_pin: gpio.13
+  sck_pin: gpio.14
+
+sdcard:
+  cs_pin: gpio.15
+  card_detect_pin: NO_PIN
+
+control:
+  safety_door_pin: NO_PIN
+  reset_pin: NO_PIN
+  feed_hold_pin: NO_PIN
+  cycle_start_pin: NO_PIN
+  macro0_pin: NO_PIN
+  macro1_pin: NO_PIN
+  macro2_pin: NO_PIN
+  macro3_pin: NO_PIN
+
+macros:
+  startup_line0:
+  startup_line1: G21 G90 G0 Z5
+  macro0:
+  macro1:
+  macro2:
+  macro3:
+
+coolant:
+  flood_pin: NO_PIN
+  mist_pin: NO_PIN
+  delay_ms: 0
+
+probe:
+  pin: NO_PIN
+  check_mode_start: true
+
+# Laser/spindle output is deliberately not configured because GPIO32 is used by the pen servo.
+user_outputs:
+  analog0_pin: NO_PIN
+  analog1_pin: NO_PIN
+  analog2_pin: NO_PIN
+  analog3_pin: NO_PIN
+  digital0_pin: NO_PIN
+  digital1_pin: NO_PIN
+  digital2_pin: NO_PIN
+  digital3_pin: NO_PIN
+
+start:
+  # Production profile: machine coordinates are invalid until homing succeeds.
+  must_home: true

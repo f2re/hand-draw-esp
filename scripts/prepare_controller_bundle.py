@@ -30,6 +30,7 @@ def main() -> int:
 
     files = {
         ROOT / "firmware" / "fluidnc" / "config.yaml": BUNDLE / "config.yaml",
+        ROOT / "firmware" / "fluidnc" / "config-production.yaml": BUNDLE / "config-production.yaml",
         ROOT / "dist" / "index.html.gz": BUNDLE / "index.html.gz",
     }
     for source, target in files.items():
@@ -40,11 +41,12 @@ def main() -> int:
     install_text = """HandDraw ESP — комплект контроллера
 
 1. Установите официальный Wi-Fi release FluidNC.
-2. Загрузите config.yaml в /flash/config.yaml.
-3. Загрузите index.html.gz в /flash/index.html.gz.
-4. Перезагрузите плату и проверьте полный журнал запуска.
-5. Создайте /jobs на SD-карте и при необходимости скопируйте тестовые файлы из gcode/.
-6. Первый запуск выполняйте без ручки и на малой скорости.
+2. Для наладки загрузите config.yaml в /flash/config.yaml.
+3. После проверки направлений, NC-концевиков и нескольких циклов homing используйте config-production.yaml.
+4. Загрузите index.html.gz в /flash/index.html.gz.
+5. Перезагрузите плату и проверьте полный журнал запуска.
+6. Создайте /jobs на SD-карте и при необходимости скопируйте тестовые файлы из gcode/.
+7. Первый запуск выполняйте без ручки и на малой скорости.
 
 Подробная инструкция: firmware/fluidnc/INSTALL.md в исходном репозитории.
 """

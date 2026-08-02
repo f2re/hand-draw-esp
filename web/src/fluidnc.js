@@ -96,7 +96,6 @@ function normalizeJobPath(path, storage) {
   return normalized;
 }
 
-
 const CYRILLIC_JOB_MAP = Object.freeze({
   а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'i',
   к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
@@ -131,6 +130,30 @@ function commandLines(commands) {
     .filter(Boolean);
 }
 
+async function payloadBytes(payload) {
+  if (payload instanceof Uint8Array) return payload;
+  if (payload instanceof ArrayBuffer) return new Uint8Array(payload);
+  if (ArrayBuffer.isView(payload)) return new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength);
+  if (typeof Blob !== 'undefined' && payload instanceof Blob) return new Uint8Array(await payload.arrayBuffer());
+  return new TextEncoder().encode(String(payload ?? ''));
+}
+
+function bytesEqual(left, right) {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function protocolError(line, command) {
+  const message = String(line || 'Неизвестная ошибка FluidNC.').trim();
+  const error = new Error(command ? `${message} Команда: ${command}` : message);
+  error.protocolLine = message;
+  error.command = command;
+  return error;
+}
+
 export class FluidNCClient extends EventTarget {
   constructor(baseUrl = '', options = {}) {
     super();
@@ -140,9 +163,12 @@ export class FluidNCClient extends EventTarget {
     this.fileName = 'handdraw-job.gcode';
     this.status = parseFluidNCStatus('');
     this.pollIntervalMs = Math.max(200, Number(options.pollIntervalMs ?? 500));
+    this.commandTimeoutMs = Math.max(1000, Number(options.commandTimeoutMs ?? 12000));
     this.pollTimer = null;
     this.reconnectTimer = null;
     this.autoReconnect = options.autoReconnect !== false;
+    this.commandQueue = [];
+    this.activeCommand = null;
   }
 
   setBaseUrl(value) {
@@ -164,12 +190,14 @@ export class FluidNCClient extends EventTarget {
       this.dispatchEvent(new CustomEvent('connection', { detail: { connected: true, baseUrl: this.baseUrl } }));
       this.startPolling();
       this.sendRealtime('?');
+      this.pumpCommandQueue();
     });
     socket.addEventListener('message', (event) => this.handleMessage(event.data));
     socket.addEventListener('error', (event) => this.dispatchEvent(new CustomEvent('error', { detail: event })));
     socket.addEventListener('close', () => {
       this.connected = false;
       this.stopPolling();
+      this.rejectAllCommands(new Error('Соединение с FluidNC закрыто до подтверждения команды.'));
       this.dispatchEvent(new CustomEvent('connection', { detail: { connected: false, baseUrl: this.baseUrl } }));
       if (this.autoReconnect && typeof window !== 'undefined') {
         clearTimeout(this.reconnectTimer);
@@ -182,6 +210,7 @@ export class FluidNCClient extends EventTarget {
     this.autoReconnect = false;
     clearTimeout(this.reconnectTimer);
     this.stopPolling();
+    this.rejectAllCommands(new Error('Соединение с FluidNC отключено оператором.'));
     if (this.websocket) this.websocket.close();
     this.websocket = null;
     this.connected = false;
@@ -195,13 +224,29 @@ export class FluidNCClient extends EventTarget {
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
-        this.status = parseFluidNCStatus(trimmed);
-        this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
-      } else {
-        this.dispatchEvent(new CustomEvent('message', { detail: trimmed }));
-      }
+      this.handleProtocolLine(trimmed);
     }
+  }
+
+  handleProtocolLine(line) {
+    if (line.startsWith('<') && line.endsWith('>')) {
+      this.status = parseFluidNCStatus(line);
+      this.dispatchEvent(new CustomEvent('status', { detail: this.status }));
+      if (machineStateKind(this.status) === 'alarm') this.rejectAllCommands(protocolError(this.status.state, this.activeCommand?.command));
+      return;
+    }
+    if (/^ok\b/i.test(line)) {
+      this.finishActiveCommand(null, line);
+      return;
+    }
+    if (/^(?:error\b|alarm\b|critical\b|configalarm\b)/i.test(line)) {
+      const error = protocolError(line, this.activeCommand?.command);
+      this.finishActiveCommand(error, line);
+      this.rejectAllCommands(error);
+      this.dispatchEvent(new CustomEvent('message', { detail: line }));
+      return;
+    }
+    this.dispatchEvent(new CustomEvent('message', { detail: line }));
   }
 
   startPolling() {
@@ -222,6 +267,7 @@ export class FluidNCClient extends EventTarget {
 
   ensureIdle() {
     this.ensureConnected();
+    if (this.activeCommand || this.commandQueue.length) throw new Error('FluidNC ещё подтверждает предыдущую команду.');
     if (machineStateKind(this.status) !== 'idle') throw new Error(`Станок занят: ${this.status.state}.`);
   }
 
@@ -230,31 +276,70 @@ export class FluidNCClient extends EventTarget {
     this.websocket.send(data);
   }
 
-  sendCommand(command) {
+  sendCommand(command, options = {}) {
     const value = String(command ?? '').trim();
-    if (!value) return;
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-      this.sendRaw(encodeCommand(value));
-      return;
-    }
-    const query = new URLSearchParams({ commandText: value });
-    return fetch(`${this.baseUrl}/command?${query}`, { method: 'GET', credentials: 'same-origin' }).then((response) => {
-      if (!response.ok) throw new Error(`FluidNC вернул HTTP ${response.status} для команды.`);
-      return response;
-    }).catch((error) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: error }));
-      throw error;
+    if (!value) return Promise.resolve({ command: '', response: 'skipped' });
+    this.ensureConnected();
+    const timeoutMs = Math.max(1000, Number(options.timeoutMs ?? this.commandTimeoutMs));
+    return new Promise((resolve, reject) => {
+      this.commandQueue.push({ command: value, timeoutMs, resolve, reject, timer: null });
+      this.pumpCommandQueue();
     });
   }
 
-  sendCommands(commands) {
-    for (const command of commandLines(commands)) this.sendCommand(command);
+  async sendCommands(commands, options = {}) {
+    const responses = [];
+    for (const command of commandLines(commands)) responses.push(await this.sendCommand(command, options));
+    return responses;
+  }
+
+  pumpCommandQueue() {
+    if (this.activeCommand || !this.commandQueue.length) return;
+    if (!this.connected || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) return;
+    const entry = this.commandQueue.shift();
+    this.activeCommand = entry;
+    entry.timer = setTimeout(() => {
+      if (this.activeCommand !== entry) return;
+      const error = new Error(`FluidNC не подтвердил команду за ${entry.timeoutMs} мс: ${entry.command}`);
+      this.rejectAllCommands(error);
+      this.dispatchEvent(new CustomEvent('error', { detail: error }));
+    }, entry.timeoutMs);
+    try {
+      this.websocket.send(encodeCommand(entry.command));
+    } catch (error) {
+      this.finishActiveCommand(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  finishActiveCommand(error = null, response = '') {
+    const entry = this.activeCommand;
+    if (!entry) return;
+    this.activeCommand = null;
+    clearTimeout(entry.timer);
+    if (error) {
+      entry.reject(error);
+      this.dispatchEvent(new CustomEvent('error', { detail: error }));
+    } else {
+      entry.resolve({ command: entry.command, response });
+    }
+    queueMicrotask(() => this.pumpCommandQueue());
+  }
+
+  rejectAllCommands(error) {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    const active = this.activeCommand;
+    this.activeCommand = null;
+    if (active) {
+      clearTimeout(active.timer);
+      active.reject(failure);
+    }
+    while (this.commandQueue.length) this.commandQueue.shift().reject(failure);
   }
 
   sendRealtime(command) {
     const value = String(command ?? '');
     if (!value) return;
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) this.sendRaw(value);
+    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) this.websocket.send(value);
   }
 
   async ensureDirectory(remotePath) {
@@ -267,26 +352,49 @@ export class FluidNCClient extends EventTarget {
     }
   }
 
+  async readFileBytes(remotePath) {
+    const response = await fetch(`${this.baseUrl}${remotePath}?verify=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    if (!response.ok) throw new Error(`Файл записан, но не прочитан обратно: HTTP ${response.status}.`);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   async putFile(remotePath, payload, contentType = 'application/octet-stream', verify = true) {
+    const expected = await payloadBytes(payload);
     const response = await fetch(`${this.baseUrl}${remotePath}`, {
       method: 'PUT',
       headers: { 'Content-Type': contentType },
-      body: payload,
+      body: expected,
       credentials: 'same-origin',
     });
     if (!response.ok) throw new Error(`FluidNC вернул HTTP ${response.status} для ${remotePath}.`);
     if (verify) {
-      const expected = payload instanceof Blob ? payload.size : new Blob([payload]).size;
-      const check = await fetch(`${this.baseUrl}${remotePath}?verify=${Date.now()}`, {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'same-origin',
-      });
-      if (!check.ok) throw new Error(`Файл записан, но не прочитан обратно: HTTP ${check.status}.`);
-      const actual = (await check.arrayBuffer()).byteLength;
-      if (actual !== expected) throw new Error(`Проверка записи не пройдена: ${actual} байт вместо ${expected}.`);
+      const actual = await this.readFileBytes(remotePath);
+      if (!bytesEqual(actual, expected)) {
+        throw new Error(`Побайтовая проверка записи не пройдена: получено ${actual.byteLength} байт вместо точной копии ${expected.byteLength} байт.`);
+      }
     }
-    return response;
+    return { response, bytes: expected.byteLength, verified: verify ? 'byte-for-byte' : 'none' };
+  }
+
+  async deleteFile(remotePath) {
+    const response = await fetch(`${this.baseUrl}${remotePath}`, { method: 'DELETE', credentials: 'same-origin' });
+    return response.ok || response.status === 404;
+  }
+
+  async moveFile(sourcePath, targetPath) {
+    const destination = new URL(targetPath, `${this.baseUrl}/`).href;
+    const response = await fetch(`${this.baseUrl}${sourcePath}`, {
+      method: 'MOVE',
+      headers: { Destination: destination, Overwrite: 'T' },
+      credentials: 'same-origin',
+    });
+    if ([405, 501].includes(response.status)) return false;
+    if (!response.ok) throw new Error(`Не удалось завершить атомарную запись: HTTP ${response.status}.`);
+    return true;
   }
 
   async uploadJob(gcode, fileName = this.fileName, storage = 'sd') {
@@ -294,47 +402,80 @@ export class FluidNCClient extends EventTarget {
     this.fileName = safeJobFileName(fileName);
     const root = storage === 'local' ? '/flash' : '/sd/jobs';
     if (storage === 'sd') await this.ensureDirectory('/sd/jobs');
-    const path = `${root}/${encodeURIComponent(this.fileName)}`;
-    await this.putFile(path, new Blob([String(gcode)], { type: 'text/plain;charset=utf-8' }), 'text/plain;charset=utf-8', true);
-    return { storage, path: storage === 'local' ? `/${this.fileName}` : `/jobs/${this.fileName}`, bytes: new Blob([String(gcode)]).size };
+    const finalPath = `${root}/${encodeURIComponent(this.fileName)}`;
+    const temporaryPath = `${finalPath}.part-${Date.now().toString(36)}`;
+    const payload = new TextEncoder().encode(String(gcode));
+    let moved = false;
+    try {
+      await this.putFile(temporaryPath, payload, 'text/plain;charset=utf-8', true);
+      moved = await this.moveFile(temporaryPath, finalPath);
+      if (!moved) {
+        await this.putFile(finalPath, payload, 'text/plain;charset=utf-8', true);
+        await this.deleteFile(temporaryPath);
+      } else {
+        const finalBytes = await this.readFileBytes(finalPath);
+        if (!bytesEqual(finalBytes, payload)) throw new Error('Итоговый файл после переименования отличается от подготовленного G-code.');
+      }
+    } catch (error) {
+      await this.deleteFile(temporaryPath).catch(() => false);
+      throw error;
+    }
+    return {
+      storage,
+      path: storage === 'local' ? `/${this.fileName}` : `/jobs/${this.fileName}`,
+      bytes: payload.byteLength,
+      verified: 'byte-for-byte',
+      atomicMove: moved,
+    };
   }
 
-  startJob(path = this.fileName, storage = 'sd') {
+  async startJob(path = this.fileName, storage = 'sd') {
     this.ensureIdle();
     const normalized = normalizeJobPath(path, storage);
-    this.sendCommand(storage === 'local' ? `$LocalFS/Run=${normalized}` : `$SD/Run=${normalized}`);
+    return this.sendCommand(storage === 'local' ? `$LocalFS/Run=${normalized}` : `$SD/Run=${normalized}`);
   }
 
   pause() { this.sendRealtime('!'); }
   resume() { this.sendRealtime('~'); }
-  stop() { this.sendRealtime('\x18'); }
-  home() { this.ensureConnected(); this.sendCommand('$H'); }
-  unlock() { this.ensureConnected(); this.sendCommand('$X'); }
+  stop() {
+    this.rejectAllCommands(new Error('Командная очередь сброшена аварийной остановкой.'));
+    this.sendRealtime('\x18');
+  }
 
-  jog(axis, distance, feed = 600) {
+  async home() {
+    this.ensureConnected();
+    return this.sendCommand('$H', { timeoutMs: 120000 });
+  }
+
+  async unlock() {
+    this.ensureConnected();
+    return this.sendCommand('$X');
+  }
+
+  async jog(axis, distance, feed = 600) {
     this.ensureIdle();
     const name = String(axis || '').toUpperCase();
     if (!['X', 'Y', 'Z'].includes(name)) throw new Error('Неизвестная ось jog.');
-    this.sendCommand(`$J=G91 G21 ${name}${finite(distance)} F${Math.max(1, finite(feed, 600))}`);
+    return this.sendCommand(`$J=G91 G21 ${name}${finite(distance)} F${Math.max(1, finite(feed, 600))}`, { timeoutMs: 30000 });
   }
 
-  setPen(up = true, options = {}) {
+  async setPen(up = true, options = {}) {
     this.ensureIdle();
     const penUp = finite(options.penUp, 5);
     const penDown = finite(options.penDown, 0);
     const feed = Math.max(1, finite(options.feed, 240));
     const dwell = Math.max(0, finite(options.dwell, 0));
-    this.sendCommands(['G90', `G0 Z${up ? penUp : penDown} F${feed}`, ...(dwell > 0 ? [`G4 P${dwell}`] : [])]);
+    return this.sendCommands(['G90', `G0 Z${up ? penUp : penDown} F${feed}`, ...(dwell > 0 ? [`G4 P${dwell}`] : [])]);
   }
 
-  testPen(options = {}) {
+  async testPen(options = {}) {
     this.ensureIdle();
     const penUp = finite(options.penUp, 5);
     const penDown = finite(options.penDown, 0);
     const feed = Math.max(1, finite(options.feed, 180));
     const downDwell = Math.max(0.2, finite(options.penDownDwell, 0.4));
     const upDwell = Math.max(0.2, finite(options.penUpDwell, 0.4));
-    this.sendCommands([
+    return this.sendCommands([
       'G90',
       `G0 Z${penUp} F${feed}`,
       `G4 P${upDwell}`,
@@ -342,6 +483,6 @@ export class FluidNCClient extends EventTarget {
       `G4 P${downDwell}`,
       `G0 Z${penUp} F${feed}`,
       `G4 P${upDwell}`,
-    ]);
+    ], { timeoutMs: 15000 });
   }
 }
