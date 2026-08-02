@@ -45,26 +45,62 @@ jobs:
           import re
           from pathlib import Path
 
-          expected = "4d365cc0e11d34d26a28e169d7e7595ab39d61fbc7013eee37e182e6ebb63ca8"
+          EXPECTED = "4d365cc0e11d34d26a28e169d7e7595ab39d61fbc7013eee37e182e6ebb63ca8"
+          ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
           parts = sorted(Path('.commissioning-overlay').glob('part-*'))
           chunks: list[str] = []
           for path in parts:
               source = path.read_text(encoding='utf-8-sig')
               clean = re.sub(r'[^A-Za-z0-9+/=]', '', source)
-              print(f'{path.name}: source={len(source)} clean={len(clean)} mod4={len(clean) % 4} padding={clean.count("=")}')
+              print(f'{path.name}: chars={len(clean)} mod4={len(clean) % 4}')
               chunks.append(clean)
+
           encoded = ''.join(chunks)
-          print(f'total: chars={len(encoded)} mod4={len(encoded) % 4} padding={encoded.count("=")}')
-          if '=' in encoded[:-2]:
-              raise SystemExit('Base64 stream contains padding before the final quantum')
-          padded = encoded + '=' * ((-len(encoded)) % 4)
-          data = base64.b64decode(padded, validate=True)
-          digest = hashlib.sha256(data).hexdigest()
-          print(f'decoded: bytes={len(data)} sha256={digest}')
-          if digest != expected:
-              raise SystemExit(f'Unexpected package SHA-256: {digest}')
+          print(f'total: chars={len(encoded)} mod4={len(encoded) % 4}')
+
+          def decode_and_check(value: str) -> bytes | None:
+              try:
+                  data = base64.b64decode(value + '=' * ((-len(value)) % 4), validate=True)
+              except Exception:
+                  return None
+              return data if hashlib.sha256(data).hexdigest() == EXPECTED else None
+
+          data = decode_and_check(encoded)
+          if data is None:
+              # part-00 was shortened by exactly one character during the original transfer.
+              # Recover that character deterministically against the recorded SHA-256.
+              if len(chunks[0]) != 6999 or len(encoded) % 4 != 3:
+                  raise SystemExit('Package shape is not the known single-character transfer defect')
+              first = chunks[0]
+              tail = ''.join(chunks[1:])
+              repaired: tuple[int, str, bytes] | None = None
+
+              preferred_positions = [len(first)]
+              remaining_positions = range(len(first))
+              for position in [*preferred_positions, *remaining_positions]:
+                  prefix = first[:position]
+                  suffix = first[position:]
+                  for symbol in ALPHABET:
+                      candidate = prefix + symbol + suffix + tail
+                      candidate_data = base64.b64decode(candidate, validate=True)
+                      if hashlib.sha256(candidate_data).hexdigest() == EXPECTED:
+                          repaired = (position, symbol, candidate_data)
+                          break
+                  if repaired is not None:
+                      break
+                  if position and position % 1000 == 0:
+                      print(f'repair scan: {position}/{len(first)}')
+
+              if repaired is None:
+                  raise SystemExit('Unable to recover the missing Base64 character')
+              position, symbol, data = repaired
+              print(f'recovered transfer defect: part-00 position={position}, symbol={symbol!r}')
+
+          assert data is not None
+          print(f'decoded: bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}')
           Path('/tmp/commissioning.patch.gz').write_bytes(data)
           PY
+          gzip -t /tmp/commissioning.patch.gz
           gzip -dc /tmp/commissioning.patch.gz > /tmp/commissioning.patch
           git apply --check /tmp/commissioning.patch
           git apply /tmp/commissioning.patch
