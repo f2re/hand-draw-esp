@@ -1,10 +1,8 @@
 name: Apply commissioning profiles implementation
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
-    paths:
-      - '.commissioning-overlay/ready'
+  pull_request_target:
+    types: [edited, reopened, synchronize]
 
 permissions:
   contents: write
